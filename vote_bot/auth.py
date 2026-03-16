@@ -150,6 +150,29 @@ def handle_optional_defer_prompt(page, timeout_ms=8000):
 def handle_captcha_and_refresh(page):
     """Tenta resolver captcha e recria a página se necessário"""
     try:
+        found_votar_novamente = False
+        votar_novamente_selectors = [
+            "button:has-text('Votar Novamente')",
+            "button[aria-label*='Votar novamente']",
+            "button[aria-label*='Votar Novamente']",
+            "[role='button']:has-text('Votar Novamente')",
+        ]
+
+        def detect_votar_novamente_button():
+            for scope in [page] + list(page.frames):
+                for sel in votar_novamente_selectors:
+                    try:
+                        loc = scope.locator(sel).first
+                        if loc.count() == 0:
+                            continue
+                        try:
+                            if loc.is_visible():
+                                return True
+                        except Exception:
+                            return True
+                    except Exception:
+                        continue
+            return False
         
         for i in range(VOTAR_NOVAMENTE_RETRY):
                 
@@ -178,15 +201,28 @@ def handle_captcha_and_refresh(page):
             time.sleep(10)
 
             try:
+                # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
+                if detect_votar_novamente_button():
+                    print("Botão 'Votar Novamente' detectado!")
+                    found_votar_novamente = True
+                    break
+
                 # verifica se apareceu a tela de voto confirmado
                 if page.locator("text=Seu voto").count() > 0:
                     print("Página de confirmação detectada!")
-                    break
 
-                # verifica botão votar novamente
-                if page.locator("button:has-text('Votar Novamente')").count() > 0:
-                    print("Botão 'Votar Novamente' detectado!")
-                    break
+                    # às vezes o botão aparece logo após a confirmação; dá uma pequena janela pra ele renderizar
+                    deadline = time.time() + 4.0
+                    while time.time() < deadline and not found_votar_novamente:
+                        if detect_votar_novamente_button():
+                            print("Botão 'Votar Novamente' detectado!")
+                            found_votar_novamente = True
+                            break
+                        time.sleep(0.25)
+
+                    if found_votar_novamente:
+                        break
+                    continue
 
                 print("hCaptcha ainda parece presente...")
 
@@ -196,9 +232,12 @@ def handle_captcha_and_refresh(page):
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
                 raise Exception("Captcha ainda presente após várias tentativas.")
         
-        total_interacoes = incrementar_contador(COUNTER_FILE)
-        print(f"Contador salvo em {COUNTER_FILE}: {total_interacoes}")
-                         
+        if found_votar_novamente:
+            total_interacoes = incrementar_contador(COUNTER_FILE)
+            print(f"Contador salvo em {COUNTER_FILE}: {total_interacoes}")
+        else:
+            print("Botão 'Votar Novamente' não foi detectado; contador não foi incrementado.")
+                          
         # Após resolver, recria a página para evitar lentidão
         print("Recriando página para evitar lentidão pós-captcha...")
         context = page.context
