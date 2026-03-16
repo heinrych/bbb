@@ -142,7 +142,35 @@ def safe_close_page(page):
         ctx = page.context
         if len(ctx.pages) <= 1:
             return False
-        page.close()
+        page.close(timeout=3000)
+        return True
+    except Exception:
+        return False
+
+
+def _same_page(a, b) -> bool:
+    if a is b:
+        return True
+    try:
+        a_impl = getattr(a, "_impl_obj", None)
+        b_impl = getattr(b, "_impl_obj", None)
+        return a_impl is not None and a_impl == b_impl
+    except Exception:
+        return False
+
+
+def _close_page_via_cdp(page) -> bool:
+    try:
+        session = page.context.new_cdp_session(page)
+    except Exception:
+        return False
+
+    try:
+        info = session.send("Target.getTargetInfo")
+        target_id = (info.get("targetInfo") or {}).get("targetId")
+        if not target_id:
+            return False
+        session.send("Target.closeTarget", {"targetId": target_id})
         return True
     except Exception:
         return False
@@ -151,13 +179,31 @@ def safe_close_page(page):
 def close_other_pages(context, keep_page, timeout_ms: int = 3000):
     try:
         for pg in list(context.pages):
-            if pg != keep_page:
+            if _same_page(pg, keep_page):
+                continue
+            if pg.is_closed():
+                continue
+            try:
+                pg_url = pg.url
+            except Exception:
+                pg_url = ""
+
+            if not pg_url:
+                pg_url = "<sem-url>"
+            try:
                 try:
                     # Em alguns casos (captcha/tracking pesado), fechar uma guia pode travar.
                     # Timeout curto evita bloquear o loop principal indefinidamente.
                     pg.close(timeout=timeout_ms)
                 except Exception:
-                    pass
+                    # fallback para CDP, útil quando o Playwright não consegue encerrar a guia
+                    if not _close_page_via_cdp(pg):
+                        try:
+                            print(f"Aviso: nao consegui fechar a guia: {pg_url}")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
     except Exception:
         pass
 
