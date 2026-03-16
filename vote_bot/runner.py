@@ -21,7 +21,7 @@ from .counter import interacao_atual
 from .auth import ensure_authenticated, clean_cache_and_login, handle_captcha_and_refresh, hard_reset_browser
 
 def main():
-    Path("artifacts").mkdir(exist_ok=True)
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     profile_to_use = resolve_profile_dir(MAIN_USER_DATA_DIR, PROFILE_DIR)
     print(f"Usando user-data-dir: {MAIN_USER_DATA_DIR}")
     print(f"Usando profile-directory: {profile_to_use}")
@@ -107,7 +107,7 @@ def main():
                 time.sleep(random.uniform(1.2, 3.5))
                 click_candidato(page, CANDIDATO)
 
-                page.screenshot(path="artifacts/01_card_selecionado.png", full_page=True)
+                page.screenshot(path=str(ARTIFACTS_DIR / "01_card_selecionado.png"), full_page=True)
 
                 # tentar interagir com hCaptcha checkbox se presente
                 page = handle_captcha_and_refresh(page)

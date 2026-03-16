@@ -156,7 +156,9 @@ def click_votar_novamente(page):
     return False
 
 
-def setup_network_logging(page, logfile_path=Path("artifacts") / "network.log"):
+def setup_network_logging(page, logfile_path=None):
+    if logfile_path is None:
+        logfile_path = ARTIFACTS_DIR / "network.log"
     logfile_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log_line(line: str):

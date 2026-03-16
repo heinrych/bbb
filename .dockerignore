@@ -1,0 +1,9 @@
+.git
+__pycache__/
+**/__pycache__/
+artifacts/
+*.pyc
+*.pyo
+*.pyd
+.env
+vote_bot/.env

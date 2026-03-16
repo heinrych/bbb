@@ -200,6 +200,7 @@ def safe_goto(page, url, max_attempts=4, base_wait=2.0):
 
 
 def resolve_profile_dir(user_data_dir, preferred_profile):
+    Path(user_data_dir).mkdir(parents=True, exist_ok=True)
     preferred_path = Path(user_data_dir) / preferred_profile
     if preferred_path.exists():
         return preferred_profile
@@ -219,9 +220,8 @@ def resolve_profile_dir(user_data_dir, preferred_profile):
             return "Default"
         return sorted(candidates)[0]
 
-    raise FileNotFoundError(
-        f"Nenhum perfil encontrado em {user_data_dir}. Esperado: {preferred_profile}"
-    )
+    # Primeiro uso (VM/maquina nova): deixar o Chrome criar o profile solicitado.
+    return preferred_profile
 
 
 

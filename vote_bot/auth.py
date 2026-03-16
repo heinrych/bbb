@@ -244,12 +244,19 @@ def handle_captcha_and_refresh(page):
         new_page = context.new_page()
         minimize_window(new_page)
         
-        # Fecha a página antiga
-        safe_close_page(page)
+        # Navega primeiro; só depois fecha as outras guias.
+        # Isso evita ficar com uma guia nova presa em about:blank enquanto a antiga permanece aberta.
+        try:
+            new_page = safe_goto(new_page, SITE_URL)
+        except Exception as nav_err:
+            try:
+                new_page.close()
+            except Exception:
+                pass
+            print(f"Falha ao navegar na nova pagina (mantendo a atual): {nav_err}")
+            return page
+
         close_other_pages(context, new_page)
-        
-        # Navega para a URL principal
-        new_page = safe_goto(new_page, SITE_URL)
         return new_page
 
     except Exception as e:
