@@ -47,15 +47,22 @@ def clear_page_cache(page):
     try:
         page.evaluate(
             """() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                if (window.caches && caches.keys) {
-                    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-                }
-                if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-                    navigator.serviceWorker.getRegistrations()
-                             .then(regs => regs.forEach(r => r.unregister()));
-                }
+                try { localStorage.clear(); } catch (e) {}
+                try { sessionStorage.clear(); } catch (e) {}
+                try {
+                    if (globalThis.caches && caches.keys) {
+                        caches.keys()
+                              .then(keys => keys.forEach(k => caches.delete(k)))
+                              .catch(() => {});
+                    }
+                } catch (e) {}
+                try {
+                    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+                        navigator.serviceWorker.getRegistrations()
+                                 .then(regs => regs.forEach(r => r.unregister()))
+                                 .catch(() => {});
+                    }
+                } catch (e) {}
             }"""
         )
     except Exception as e:
@@ -156,12 +163,23 @@ def handle_captcha_and_refresh(page):
         captcha_clicked = False
         votar_novamente_selectors = [
             "button:has-text('Votar Novamente')",
-            "button[aria-label*='Votar novamente']",
-            "button[aria-label*='Votar Novamente']",
+            "button[aria-label*='votar novamente' i]",
             "[role='button']:has-text('Votar Novamente')",
+            "[role='button'][aria-label*='votar novamente' i]",
         ]
 
         def detect_votar_novamente_button():
+            try:
+                # acessible name inclui aria-label e texto visível
+                loc = page.get_by_role("button", name=re.compile(r"votar novamente", re.I)).first
+                if loc.count() > 0:
+                    try:
+                        if loc.is_visible():
+                            return True
+                    except Exception:
+                        return True
+            except Exception:
+                pass
             for scope in [page] + list(page.frames):
                 for sel in votar_novamente_selectors:
                     try:
