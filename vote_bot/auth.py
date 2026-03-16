@@ -151,6 +151,7 @@ def handle_captcha_and_refresh(page):
     """Tenta resolver captcha e recria a página se necessário"""
     try:
         found_votar_novamente = False
+        captcha_clicked = False
         votar_novamente_selectors = [
             "button:has-text('Votar Novamente')",
             "button[aria-label*='Votar novamente']",
@@ -176,29 +177,38 @@ def handle_captcha_and_refresh(page):
         
         for i in range(VOTAR_NOVAMENTE_RETRY):
                 
-            frame = page.frame_locator("iframe[src*='hcaptcha.com']").first
-            cb = frame.locator("div[role='checkbox']").first
-            
-            if cb.count() > 0:
-                print("hCaptcha detectado. Clicando para abrir...")
-                cb.wait_for(state="visible", timeout=5000)
-                cb.scroll_into_view_if_needed()
-                time.sleep(random.uniform(2.5, 5))
-                cb.click(timeout=5000, force=True)
-                break
+            try:
+                frame = page.frame_locator("iframe[src*='hcaptcha.com']").first
+                cb = frame.locator("div[role='checkbox']").first
+
+                if cb.count() > 0:
+                    print("hCaptcha detectado. Clicando para abrir...")
+                    cb.wait_for(state="visible", timeout=5000)
+                    cb.scroll_into_view_if_needed()
+                    time.sleep(random.uniform(2.5, 5))
+                    cb.click(timeout=5000, force=True)
+                    captcha_clicked = True
+                    break
+            except Exception:
+                # iframe/elemento pode ainda nÃ£o estar pronto; tenta novamente
+                pass
             
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar hCaptcha...")
             time.sleep(random.uniform(2,4))
             
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
-                raise("hCaptcha não detectado após várias tentativas. Continuando sem clicar.")
-    
+                print("hCaptcha não detectado após várias tentativas. Continuando sem clicar.")
+                return page
+
+        if not captcha_clicked:
+            return page
+     
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
 
             print("Resolva o hCaptcha manualmente... aguardando 20s")
-            time.sleep(6)
+            time.sleep(20)
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
@@ -222,7 +232,8 @@ def handle_captcha_and_refresh(page):
 
                     if found_votar_novamente:
                         break
-                    continue
+                    if i + 1 < VOTAR_NOVAMENTE_RETRY:
+                        continue
 
                 print("hCaptcha ainda parece presente...")
 
