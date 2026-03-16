@@ -7,6 +7,32 @@ from .users import pick_user_email
 from .browser import safe_goto, minimize_window, safe_close_page, close_other_pages
 from .counter import incrementar_contador
 
+
+class RestartInitialFlow(RuntimeError):
+    pass
+
+
+def is_hcaptcha_challenge_visible(page) -> bool:
+    """
+    Detecta a janela/iframe do desafio do hCaptcha (ex.: frame=challenge).
+
+    Isso não tenta resolver captcha; apenas detecta a UI para voltar ao fluxo inicial.
+    """
+    selectors = [
+        "iframe[src*='hcaptcha'][src*='frame=challenge']",
+        "iframe[src*='newassets.hcaptcha.com'][src*='frame=challenge']",
+        "iframe[title*='desafio hcaptcha' i]",
+        "iframe[title*='hcaptcha' i][src*='frame=challenge']",
+    ]
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if loc.count() > 0 and loc.is_visible():
+                return True
+        except Exception:
+            continue
+    return False
+
 def has_entrar(page):
     try:
         # Se encontrar o botão "Entrar" visível, NÃO está logado
@@ -159,6 +185,10 @@ def handle_optional_defer_prompt(page, timeout_ms=8000):
 def handle_captcha_and_refresh(page):
     """Tenta resolver captcha e recria a página se necessário"""
     try:
+        if is_hcaptcha_challenge_visible(page):
+            print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+            raise RestartInitialFlow("hCaptcha challenge visível")
+
         found_votar_novamente = False
         captcha_clicked = False
         votar_novamente_selectors = [
@@ -208,7 +238,17 @@ def handle_captcha_and_refresh(page):
                     time.sleep(random.uniform(2.5, 5))
                     cb.click(timeout=5000, force=True)
                     captcha_clicked = True
+
+                    # Se isso abrir a janela de desafio, não tentamos resolver: reinicia o fluxo.
+                    deadline = time.time() + 4.0
+                    while time.time() < deadline:
+                        if is_hcaptcha_challenge_visible(page):
+                            print("Desafio do hCaptcha abriu. Voltando ao fluxo inicial...")
+                            raise RestartInitialFlow("hCaptcha challenge abriu após click")
+                        time.sleep(0.25)
                     break
+            except RestartInitialFlow:
+                raise
             except Exception:
                 # iframe/elemento pode ainda nÃ£o estar pronto; tenta novamente
                 pass
@@ -227,8 +267,18 @@ def handle_captcha_and_refresh(page):
 
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
 
-            print("Resolva o hCaptcha manualmente... aguardando 20s")
-            time.sleep(20)
+            if is_hcaptcha_challenge_visible(page):
+                print("Janela do desafio do hCaptcha detectada durante espera. Voltando ao fluxo inicial...")
+                raise RestartInitialFlow("hCaptcha challenge visível durante espera")
+
+            # Se não abriu janela de desafio, aguardar um pouco para o fluxo "invisible" completar.
+            wait_s = 6.0
+            start = time.time()
+            while time.time() - start < wait_s:
+                if is_hcaptcha_challenge_visible(page):
+                    print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+                    raise RestartInitialFlow("hCaptcha challenge visível durante espera curta")
+                time.sleep(0.5)
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
@@ -301,6 +351,8 @@ def handle_captcha_and_refresh(page):
         print("Outras guias fechadas.")
         return new_page
 
+    except RestartInitialFlow:
+        raise
     except Exception as e:
         print(f"Sem hCaptcha visível ou erro: {e}")
         
@@ -942,6 +994,3 @@ def hard_reset_browser(page):
     new_page = safe_goto(new_page, SITE_URL)
 
     return new_page
-
-
-

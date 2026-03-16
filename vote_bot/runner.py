@@ -18,7 +18,14 @@ from .browser import (
 )
 from .actions import click_candidato
 from .counter import interacao_atual
-from .auth import ensure_authenticated, clean_cache_and_login, handle_captcha_and_refresh, hard_reset_browser
+from .auth import (
+    RestartInitialFlow,
+    ensure_authenticated,
+    clean_cache_and_login,
+    handle_captcha_and_refresh,
+    hard_reset_browser,
+    is_hcaptcha_challenge_visible,
+)
 
 def main():
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -87,6 +94,11 @@ def main():
                 # caso a limpeza de cache nos tenha levado direto para a tela de login,
                 # preenchê-la automaticamente antes de prosseguir
                 page = ensure_page_alive(page, p)
+                if is_hcaptcha_challenge_visible(page):
+                    print("Janela do desafio do hCaptcha detectada. Reiniciando fluxo inicial...")
+                    page = safe_goto(page, SITE_URL)
+                    page = ensure_authenticated(page)
+                    continue
                 if "authx.globoid.globo.com" in page.url or page.locator("input[name=email]").count() > 0:
                     print("Tela de login detectada, preenchendo credenciais...")
                     page = clean_cache_and_login(page)
@@ -111,7 +123,14 @@ def main():
                 print(f"Screenshot salvo: {screenshot_path}")
 
                 # tentar interagir com hCaptcha checkbox se presente
-                page = handle_captcha_and_refresh(page)
+                try:
+                    page = handle_captcha_and_refresh(page)
+                except RestartInitialFlow as restart_err:
+                    print(f"{restart_err}. Reiniciando fluxo inicial...")
+                    page = ensure_page_alive(page, p)
+                    page = safe_goto(page, SITE_URL)
+                    page = ensure_authenticated(page)
+                    continue
                 try:
                     print(f"Estado apos captcha. URL atual: {page.url}")
                 except Exception:
