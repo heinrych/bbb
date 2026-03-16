@@ -89,8 +89,9 @@ def main():
                 page = ensure_page_alive(page, p)
                 if "authx.globoid.globo.com" in page.url or page.locator("input[name=email]").count() > 0:
                     print("Tela de login detectada, preenchendo credenciais...")
-                    if not clean_cache_and_login(page):
-                        raise RuntimeError("Falha no login detectado dentro do loop principal.")
+                    page = clean_cache_and_login(page)
+                    if page is None or page.is_closed():
+                        raise RuntimeError("Falha no login: pagina fechada/invalidada durante clean_cache_and_login.")
                     # após login é esperado redirecionamento; vamos forçar ir novamente ao SITE_URL
                     try:
                         page = safe_goto(page, SITE_URL)
