@@ -70,4 +70,4 @@ VOTAR_NOVAMENTE_RETRY = 3
 KILL_CHROME_ON_RETRY = False
 
 _bring_to_front = (os.getenv("BRING_TO_FRONT") or "").strip().lower()
-BRING_TO_FRONT = True if _bring_to_front in ("", "1", "true", "yes", "y", "on") else False
+BRING_TO_FRONT = True

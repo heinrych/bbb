@@ -1,5 +1,6 @@
 ﻿import time
 import random
+import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -13,6 +14,7 @@ from .browser import (
     connect_cdp,
     safe_goto,
     minimize_window,
+    arrange_window,
     ensure_page_alive,
     close_other_pages,
 )
@@ -32,6 +34,7 @@ def main():
     profile_to_use = resolve_profile_dir(MAIN_USER_DATA_DIR, PROFILE_DIR)
     print(f"Usando user-data-dir: {MAIN_USER_DATA_DIR}")
     print(f"Usando profile-directory: {profile_to_use}")
+    print(f"BRING_TO_FRONT={BRING_TO_FRONT} (env={os.getenv('BRING_TO_FRONT')!r})")
 
     if not ensure_devtools_or_launch(profile_to_use, timeout=20):
         for tentativa in range(1, 4):
@@ -69,10 +72,14 @@ def main():
         if page is None:
             page = context.pages[0] if context.pages else context.new_page()
             page = safe_goto(page, SITE_URL)
-            minimize_window(page)
+            if BRING_TO_FRONT:
+                arrange_window(page)
+            else:
+                minimize_window(page)
 
         if BRING_TO_FRONT:
             page.bring_to_front()
+            arrange_window(page)
         else:
             minimize_window(page)
         print("URL atual:", page.url)
@@ -193,4 +200,3 @@ def run_forever():
                 f"Reiniciando o processo... (falhas consecutivas: {failure_count}). Aguardando {wait:.1f}s antes de tentar novamente.")
             time.sleep(wait)
             continue
-
