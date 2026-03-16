@@ -1,21 +1,35 @@
-Opcao: iniciar tudo com 1 comando (abre 3 janelas), você vai precisar de 6 emails no .env com a mesma senha, também preenchida no .env:
+**Iniciar (Windows)**
 
+**Pré-requisitos**
+1. No `.env`, configure 6 emails e a senha correspondente.
+
+**Primeiro teste**
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+scripts\windows\bootstrap.ps1
+```
+
+**Opção 1: iniciar tudo com 1 comando (abre 3 janelas)**
 ```powershell
 scripts\windows\run_all.ps1 -NewWindows
 ```
 
-Caso só tenha 2 emails:
-
+**Opção 2: só 2 emails (instância única)**
+```powershell
 $env:INSTANCE_ID=1; scripts\windows\run_vote.ps1
+```
 
-Para abrir 3 janelas (recomendado pra você ver o Chrome):
-
-scripts\windows\run_all.ps1 -NewWindows
-Para rodar em background (jobs no mesmo PowerShell):
-
+**Executar em background (jobs no mesmo PowerShell)**
+```powershell
 scripts\windows\run_all.ps1
-Ver saída: Receive-Job -Name vote_1 -Keep
-Parar: Stop-Job -Name vote_1
-Obs.: o comando correto é scripts\windows\run_vote.ps1 (com .ps1, não .ps).
+```
+Ver saída:
+```powershell
+Receive-Job -Name vote_1 -Keep
+```
+Parar:
+```powershell
+Stop-Job -Name vote_1
+```
 
-
+Obs.: o comando correto é `scripts\windows\run_vote.ps1` (com `.ps1`, não `.ps`).
