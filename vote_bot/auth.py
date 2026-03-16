@@ -250,7 +250,7 @@ def handle_captcha_and_refresh(page):
             except RestartInitialFlow:
                 raise
             except Exception:
-                # iframe/elemento pode ainda nÃ£o estar pronto; tenta novamente
+                # iframe/elemento pode ainda não estar pronto; tenta novamente
                 pass
             
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar hCaptcha...")
