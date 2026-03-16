@@ -319,14 +319,14 @@ def handle_captcha_and_refresh(page):
                 """)
                 print("Cliquei no hCaptcha via evaluate (fallback). Aguardando resolução...")
                 time.sleep(20)
-                
+
                 # Recria a página
                 context = page.context
                 new_page = context.new_page()
                 minimize_window(new_page)
                 safe_close_page(page)
-                close_other_pages(context, new_page)
                 new_page = safe_goto(new_page, SITE_URL)
+                close_other_pages(context, new_page)
                 return new_page
         except:
             raise Exception("hCaptcha não detectado e fallback falhou. Continuando sem clicar.")
