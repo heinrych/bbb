@@ -105,14 +105,24 @@ def main():
 
                 # pequeno atraso randômico antes de interagir para simular comportamento humano
                 time.sleep(random.uniform(1.2, 3.5))
-                click_candidato(page, CANDIDATO)
+                print(f"Clicando no candidato: {CANDIDATO}...")
+                if not click_candidato(page, CANDIDATO):
+                    print("Aviso: nao consegui clicar no candidato (nenhum seletor funcionou).")
 
-                page.screenshot(path=str(ARTIFACTS_DIR / "01_card_selecionado.png"), full_page=True)
+                screenshot_path = ARTIFACTS_DIR / "01_card_selecionado.png"
+                page.screenshot(path=str(screenshot_path), full_page=True)
+                print(f"Screenshot salvo: {screenshot_path}")
 
                 # tentar interagir com hCaptcha checkbox se presente
                 page = handle_captcha_and_refresh(page)
+                try:
+                    print(f"Estado apos captcha. URL atual: {page.url}")
+                except Exception:
+                    pass
 
-                time.sleep(random.uniform(3, 6))
+                wait_after_captcha = random.uniform(3, 6)
+                print(f"Pos-captcha: aguardando {wait_after_captcha:.1f}s...")
+                time.sleep(wait_after_captcha)
                 total_interacoes = interacao_atual()
                 # a cada 3 interações recria a página para evitar acúmulo de estado
                 if total_interacoes % MAX_INTERATIONS_NOW == 0:
@@ -127,7 +137,9 @@ def main():
                     page = ensure_authenticated(page)
 
                 # pequena espera randômica antes da proxima iteracao
-                time.sleep(random.uniform(2.5, 6.5))
+                wait_next_iter = random.uniform(2.5, 6.5)
+                print(f"Aguardando {wait_next_iter:.1f}s antes da proxima iteracao...")
+                time.sleep(wait_next_iter)
 
             except KeyboardInterrupt:
                 raise

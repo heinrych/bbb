@@ -63,6 +63,8 @@ def clear_page_cache(page):
 
 
 def clear_browser_state(page):
+    if page.is_closed():
+        return
     clear_page_cache(page)
     try:
         session = page.context.new_cdp_session(page)
@@ -846,15 +848,28 @@ def clean_cache_and_login(page):
 
     # Salva o contexto antes de fechar a página
     context = page.context
+    try:
+        if hasattr(context, "is_closed") and context.is_closed():
+            raise RuntimeError("Contexto fechado antes da limpeza.")
+    except Exception as e:
+        print(f"Contexto inválido: {e}")
+        return page
 
     try:
-        # Fecha a página atual
-        safe_close_page(page)
-    except:
+        if not page.is_closed():
+            try:
+                page.close(timeout=3000)
+            except Exception:
+                safe_close_page(page)
+    except Exception:
         pass
 
     # Cria uma nova página completamente nova
-    page = context.new_page()
+    try:
+        page = context.new_page()
+    except Exception as e:
+        print(f"Nao consegui abrir nova pagina no contexto: {e}")
+        return page
     close_other_pages(context, page)
     minimize_window(page)
 
@@ -867,7 +882,7 @@ def clean_cache_and_login(page):
     # Força uma nova sessão
     try:
         context.clear_cookies()
-    except:
+    except Exception:
         pass
 
     for i in range(2):
