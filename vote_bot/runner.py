@@ -126,10 +126,10 @@ def main():
                     page = ensure_page_alive(page, p)
                     context = page.context
                     new_page = context.new_page()
-                    close_other_pages(context, new_page)
                     minimize_window(new_page)
 
                     page = safe_goto(new_page, SITE_URL)
+                    close_other_pages(context, page)
                     page = ensure_authenticated(page)
 
                 # pequena espera randômica antes da proxima iteracao
