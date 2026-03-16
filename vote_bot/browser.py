@@ -148,12 +148,14 @@ def safe_close_page(page):
         return False
 
 
-def close_other_pages(context, keep_page):
+def close_other_pages(context, keep_page, timeout_ms: int = 3000):
     try:
         for pg in list(context.pages):
             if pg != keep_page:
                 try:
-                    pg.close()
+                    # Em alguns casos (captcha/tracking pesado), fechar uma guia pode travar.
+                    # Timeout curto evita bloquear o loop principal indefinidamente.
+                    pg.close(timeout=timeout_ms)
                 except Exception:
                     pass
     except Exception:

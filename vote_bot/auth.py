@@ -275,7 +275,12 @@ def handle_captcha_and_refresh(page):
             print(f"Falha ao navegar na nova pagina (mantendo a atual): {nav_err}")
             return page
 
+        try:
+            print(f"Fechando outras guias (total={len(context.pages)})...")
+        except Exception:
+            print("Fechando outras guias...")
         close_other_pages(context, new_page)
+        print("Outras guias fechadas.")
         return new_page
 
     except Exception as e:

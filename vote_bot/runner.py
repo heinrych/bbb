@@ -16,7 +16,7 @@ from .browser import (
     ensure_page_alive,
     close_other_pages,
 )
-from .actions import setup_network_logging, click_candidato
+from .actions import click_candidato
 from .counter import interacao_atual
 from .auth import ensure_authenticated, clean_cache_and_login, handle_captcha_and_refresh, hard_reset_browser
 
@@ -64,10 +64,6 @@ def main():
             page = safe_goto(page, SITE_URL)
             minimize_window(page)
 
-        try:
-            setup_network_logging(page)
-        except Exception:
-            pass
         if BRING_TO_FRONT:
             page.bring_to_front()
         else:
