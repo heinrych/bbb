@@ -198,7 +198,7 @@ def handle_captcha_and_refresh(page):
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
 
             print("Resolva o hCaptcha manualmente... aguardando 20s")
-            time.sleep(10)
+            time.sleep(6)
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
