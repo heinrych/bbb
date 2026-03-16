@@ -41,6 +41,7 @@ if INSTANCE_ID > 0:
             f"INSTANCE_ID={INSTANCE_ID} requer USER_EMAIL com pelo menos {start + 1} email(s). "
             f"Recebido: {len(USER_EMAILS)}."
         )
+    print(f"❌✅❌✅ Instância {INSTANCE_ID} usando emails: {selected_emails}")
     USER_EMAILS = selected_emails
 
 DEBUG_PORT_BASE = _int_env("DEBUG_PORT_BASE", 9222)

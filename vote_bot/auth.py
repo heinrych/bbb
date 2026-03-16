@@ -247,7 +247,13 @@ def handle_captcha_and_refresh(page):
         # Navega primeiro; só depois fecha as outras guias.
         # Isso evita ficar com uma guia nova presa em about:blank enquanto a antiga permanece aberta.
         try:
-            new_page = safe_goto(new_page, SITE_URL)
+            print("Navegando na nova pagina...")
+            new_page.goto(SITE_URL, wait_until="commit", timeout=20000)
+            try:
+                new_page.wait_for_load_state("domcontentloaded", timeout=15000)
+            except Exception:
+                pass
+            print("Nova pagina pronta.")
         except Exception as nav_err:
             try:
                 new_page.close()
