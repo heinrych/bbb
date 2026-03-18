@@ -20,10 +20,58 @@ _RAW_USER_EMAIL = os.getenv("USER_EMAIL") or ""
 USER_EMAILS = [e.strip() for e in _RAW_USER_EMAIL.split(",") if e.strip()]
 USER_PASSWORD = os.getenv("USER_PASSWORD")
 
-DEBUG_PORT = 9222
-PROFILE_DIR = "Trabalho"
-MAIN_USER_DATA_DIR = r"C:\chrome-debug"
-COUNTER_FILE = Path("artifacts") / "count.txt"
+def _int_env(name: str, default: int = 0) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _apply_instance_template(value: str | None, instance_id: int) -> str | None:
+    if value is None or instance_id <= 0:
+        return value
+    return value.replace("{id}", str(instance_id))
+
+
+INSTANCE_ID = _int_env("INSTANCE_ID", 0)
+
+# Mesma regra do vote:
+# - INSTANCE_ID=1 -> emails 1 e 2
+# - INSTANCE_ID=2 -> emails 3 e 4
+# - INSTANCE_ID=3 -> emails 5 e 6
+if INSTANCE_ID > 0:
+    start = (INSTANCE_ID - 1) * 2
+    selected_emails = USER_EMAILS[start : start + 2]
+    if not selected_emails:
+        raise RuntimeError(
+            f"INSTANCE_ID={INSTANCE_ID} requer USER_EMAIL com pelo menos {start + 1} email(s). "
+            f"Recebido: {len(USER_EMAILS)}."
+        )
+    print(f"❌✅❌✅ Instância {INSTANCE_ID} usando emails: {selected_emails}")
+    USER_EMAILS = selected_emails
+
+DEBUG_PORT_BASE = _int_env("DEBUG_PORT_BASE", 9222)
+DEBUG_PORT = _int_env("DEBUG_PORT", 0) or (DEBUG_PORT_BASE + (INSTANCE_ID - 1 if INSTANCE_ID > 0 else 0))
+
+_raw_profile_dir = os.getenv("PROFILE_DIR") or "Trabalho"
+PROFILE_DIR = _apply_instance_template(_raw_profile_dir, INSTANCE_ID) or "Trabalho"
+
+_raw_user_data_dir = os.getenv("MAIN_USER_DATA_DIR") or r"C:\chrome-debug"
+_templated_user_data_dir = _apply_instance_template(_raw_user_data_dir, INSTANCE_ID) or _raw_user_data_dir
+MAIN_USER_DATA_DIR = _templated_user_data_dir
+if INSTANCE_ID > 0 and os.getenv("MAIN_USER_DATA_DIR") is None and "{id}" not in _raw_user_data_dir:
+    MAIN_USER_DATA_DIR = f"{_templated_user_data_dir}-{INSTANCE_ID}"
+
+_raw_artifacts_dir = os.getenv("ARTIFACTS_DIR") or "artifacts"
+_templated_artifacts_dir = _apply_instance_template(_raw_artifacts_dir, INSTANCE_ID) or _raw_artifacts_dir
+ARTIFACTS_DIR = Path(_templated_artifacts_dir)
+if INSTANCE_ID > 0 and os.getenv("ARTIFACTS_DIR") is None and "{id}" not in _raw_artifacts_dir:
+    ARTIFACTS_DIR = ARTIFACTS_DIR / f"instance_{INSTANCE_ID}"
+
+COUNTER_FILE = ARTIFACTS_DIR / "count.txt"
 MAX_INTERATIONS_NOW = 10
 VOTAR_NOVAMENTE_RETRY = 3
 KILL_CHROME_ON_RETRY = False
@@ -449,7 +497,8 @@ def click_votar_novamente(page):
     return False
 
 
-def setup_network_logging(page, logfile_path=Path("artifacts") / "network.log"):
+def setup_network_logging(page, logfile_path: Path | None = None):
+    logfile_path = logfile_path or (ARTIFACTS_DIR / "network.log")
     logfile_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log_line(line: str):
@@ -1401,7 +1450,7 @@ def hard_reset_browser(page):
 
 
 def main():
-    Path("artifacts").mkdir(exist_ok=True)
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     profile_to_use = resolve_profile_dir(MAIN_USER_DATA_DIR, PROFILE_DIR)
     print(f"Usando user-data-dir: {MAIN_USER_DATA_DIR}")
     print(f"Usando profile-directory: {profile_to_use}")
@@ -1487,7 +1536,7 @@ def main():
                 time.sleep(random.uniform(1.2, 3.5))
                 click_candidato(page, CANDIDATO)
 
-                page.screenshot(path="artifacts/01_card_selecionado.png", full_page=True)
+                page.screenshot(path=str(ARTIFACTS_DIR / "01_card_selecionado.png"), full_page=True)
 
                 # tentar interagir com hCaptcha checkbox se presente - AGORA COM O PARÂMETRO PLAYWRIGHT
                 page = handle_captcha_and_refresh(page, p)
