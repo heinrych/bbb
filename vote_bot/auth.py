@@ -353,11 +353,12 @@ def handle_captcha_and_refresh(page, playwright=None):
             time.sleep(random.uniform(2,4))
             
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
-                print("hCaptcha não detectado após várias tentativas. Continuando sem clicar.")
-                return page
+                print("hCaptcha não detectado após várias tentativas. Reiniciando fluxo inicial...")
+                raise RestartInitialFlow("hCaptcha não detectado após várias tentativas")
 
         if not captcha_clicked:
-            return page
+            print("Não consegui clicar no hCaptcha. Reiniciando fluxo inicial...")
+            raise RestartInitialFlow("hCaptcha não foi clicado")
      
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
