@@ -131,7 +131,7 @@ def main():
 
                 # tentar interagir com hCaptcha checkbox se presente
                 try:
-                    page = handle_captcha_and_refresh(page)
+                    page = handle_captcha_and_refresh(page, p)
                 except RestartInitialFlow as restart_err:
                     print(f"{restart_err}. Reiniciando fluxo inicial...")
                     page = ensure_page_alive(page, p)
