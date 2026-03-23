@@ -1,5 +1,5 @@
-param(
-  [string]$Instances = "1,2,3",
+﻿param(
+  [string]$Instances = "1,2,3,4",
   [switch]$NewWindows
 )
 
@@ -13,12 +13,13 @@ try {
   }
 
   $ids = $Instances.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | ForEach-Object { [int]$_ }
+  $totalInstances = $ids.Count
 
   foreach ($id in $ids) {
     if ($id -le 0) { throw "INSTANCE_ID invalido: $id" }
 
     if ($NewWindows) {
-      $cmd = "`$env:INSTANCE_ID=$id; & '$runScript'"
+      $cmd = "`$env:INSTANCE_ID=$id; `$env:INSTANCES_TOTAL=$totalInstances; `$env:WINDOW_COLUMNS=$totalInstances; & '$runScript'"
       Start-Process -FilePath "powershell.exe" -ArgumentList @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
@@ -27,10 +28,12 @@ try {
       ) | Out-Null
     } else {
       Start-Job -Name "vote_$id" -ScriptBlock {
-        param($instanceId, $scriptPath)
+        param($instanceId, $scriptPath, $instancesTotal)
         $env:INSTANCE_ID = "$instanceId"
+        $env:INSTANCES_TOTAL = "$instancesTotal"
+        $env:WINDOW_COLUMNS = "$instancesTotal"
         & $scriptPath
-      } -ArgumentList $id, $runScript | Out-Null
+      } -ArgumentList $id, $runScript, $totalInstances | Out-Null
     }
   }
 

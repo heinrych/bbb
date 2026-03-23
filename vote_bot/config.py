@@ -28,18 +28,34 @@ USER_EMAILS = [e.strip() for e in _RAW_USER_EMAIL.split(",") if e.strip()]
 USER_PASSWORD = os.getenv("USER_PASSWORD")
 
 INSTANCE_ID = _int_env("INSTANCE_ID", 0)
+INSTANCES_TOTAL = _int_env("INSTANCES_TOTAL", 0) or _int_env("TOTAL_INSTANCES", 0)
 
 # Quando rodar multiplas instancias, cada instancia usa um "par" de emails:
 # - INSTANCE_ID=1 -> emails 1 e 2
 # - INSTANCE_ID=2 -> emails 3 e 4
 # - INSTANCE_ID=3 -> emails 5 e 6
 if INSTANCE_ID > 0:
-    start = (INSTANCE_ID - 1) * 2
-    selected_emails = USER_EMAILS[start : start + 2]
+    if INSTANCES_TOTAL > 0:
+        if INSTANCE_ID > INSTANCES_TOTAL:
+            raise RuntimeError(
+                f"INSTANCE_ID={INSTANCE_ID} nao pode ser maior que INSTANCES_TOTAL={INSTANCES_TOTAL}."
+            )
+
+        if not USER_EMAILS:
+            raise RuntimeError("USER_EMAIL nao configurado (defina no .env; pode ser separado por virgula).")
+
+        base = len(USER_EMAILS) // INSTANCES_TOTAL
+        remainder = len(USER_EMAILS) % INSTANCES_TOTAL
+        start = base * (INSTANCE_ID - 1) + min(remainder, INSTANCE_ID - 1)
+        size = base + (1 if INSTANCE_ID <= remainder else 0)
+        selected_emails = USER_EMAILS[start : start + size]
+    else:
+        start = (INSTANCE_ID - 1) * 2
+        selected_emails = USER_EMAILS[start : start + 2]
     if not selected_emails:
         raise RuntimeError(
-            f"INSTANCE_ID={INSTANCE_ID} requer USER_EMAIL com pelo menos {start + 1} email(s). "
-            f"Recebido: {len(USER_EMAILS)}."
+            f"INSTANCE_ID={INSTANCE_ID} nao recebeu emails. "
+            f"USER_EMAIL tem {len(USER_EMAILS)} email(s) e INSTANCES_TOTAL={INSTANCES_TOTAL or 'nao definido'}."
         )
     print(f"❌✅❌✅ Instância {INSTANCE_ID} usando emails: {selected_emails}")
     USER_EMAILS = selected_emails

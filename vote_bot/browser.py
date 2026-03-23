@@ -13,6 +13,20 @@ _LAST_BROWSER = None
 _LAST_CONTEXT = None
 
 
+def _window_columns(default: int = 3) -> int:
+    for name in ("WINDOW_COLUMNS", "WINDOW_COLS", "INSTANCES_TOTAL", "TOTAL_INSTANCES"):
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return default
+
+
 def _get_work_area():
     try:
         rect = wintypes.RECT()
@@ -39,9 +53,11 @@ def _get_work_area():
     return 0, 0, 1920, 1080
 
 
-def _bounds_for_instance(columns: int = 3):
+def _bounds_for_instance(columns: int | None = None):
     if INSTANCE_ID <= 0:
         return None
+    if columns is None:
+        columns = _window_columns(default=3)
     if INSTANCE_ID > columns:
         return None
 
@@ -52,7 +68,7 @@ def _bounds_for_instance(columns: int = 3):
     return {"left": int(left), "top": int(work_top), "width": int(width), "height": int(work_height)}
 
 
-def arrange_window(page, columns: int = 3):
+def arrange_window(page, columns: int | None = None):
     if not BRING_TO_FRONT:
         return
     bounds = _bounds_for_instance(columns=columns)
@@ -99,7 +115,7 @@ def launch_chrome_debug(user_data_dir, profile_dir=None):
         SITE_URL,
     ]
     if BRING_TO_FRONT:
-        bounds = _bounds_for_instance(columns=3)
+        bounds = _bounds_for_instance()
         if bounds:
             cmd.insert(5, f"--window-position={bounds['left']},{bounds['top']}")
             cmd.insert(6, f"--window-size={bounds['width']},{bounds['height']}")

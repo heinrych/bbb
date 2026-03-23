@@ -45,28 +45,32 @@ $env:INSTANCE_ID=1; scripts\windows\run_vote.ps1
 
 Se for a primeira vez numa VM "zerada", o `MAIN_USER_DATA_DIR` pode nao ter profiles ainda; o script vai deixar o Chrome criar o `PROFILE_DIR` automaticamente.
 
-## 6) Rodar 3 instancias (1, 2 e 3)
+## 6) Rodar 4 instancias (1, 2, 3 e 4)
 
-Abra 3 terminais (PowerShell) separados e rode um em cada:
+Abra 4 terminais (PowerShell) separados e rode um em cada:
 
 ```powershell
-$env:INSTANCE_ID=1; scripts\windows\run_vote.ps1
+$env:INSTANCES_TOTAL=4; $env:INSTANCE_ID=1; scripts\windows\run_vote.ps1
 ```
 
 ```powershell
-$env:INSTANCE_ID=2; scripts\windows\run_vote.ps1
+$env:INSTANCES_TOTAL=4; $env:INSTANCE_ID=2; scripts\windows\run_vote.ps1
 ```
 
 ```powershell
-$env:INSTANCE_ID=3; scripts\windows\run_vote.ps1
+$env:INSTANCES_TOTAL=4; $env:INSTANCE_ID=3; scripts\windows\run_vote.ps1
+```
+
+```powershell
+$env:INSTANCES_TOTAL=4; $env:INSTANCE_ID=4; scripts\windows\run_vote.ps1
 ```
 
 Isso separa automaticamente:
-- Porta do DevTools: `DEBUG_PORT_BASE + (INSTANCE_ID-1)` (padrao `9222`, `9223`, `9224`)
+- Porta do DevTools: `DEBUG_PORT_BASE + (INSTANCE_ID-1)` (padrao `9222`, `9223`, `9224`, `9225`)
 - Pasta do Chrome: `C:\\chrome-debug-<id>` (se voce nao definir `MAIN_USER_DATA_DIR` no `.env`)
 - Pasta de artifacts: `artifacts\\instance_<id>` (se voce nao definir `ARTIFACTS_DIR` no `.env`)
 
-Opcao: iniciar tudo com 1 comando (abre 3 janelas):
+Opcao: iniciar tudo com 1 comando (abre 4 janelas e ja seta `INSTANCES_TOTAL`):
 
 ```powershell
 scripts\windows\run_all.ps1 -NewWindows
