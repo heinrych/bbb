@@ -5,6 +5,8 @@ import time
 import random
 import re
 import urllib.request
+import ctypes
+from ctypes import wintypes
 from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import TimeoutError as PWTimeoutError
@@ -134,6 +136,98 @@ def has_entrar(page):
         return False
 
 
+def _get_work_area():
+    try:
+        rect = wintypes.RECT()
+        SPI_GETWORKAREA = 0x0030
+        ok = ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
+        if ok:
+            left = int(rect.left)
+            top = int(rect.top)
+            width = int(rect.right - rect.left)
+            height = int(rect.bottom - rect.top)
+            if width > 0 and height > 0:
+                return left, top, width, height
+    except Exception:
+        pass
+
+    try:
+        width = int(ctypes.windll.user32.GetSystemMetrics(0))
+        height = int(ctypes.windll.user32.GetSystemMetrics(1))
+        if width > 0 and height > 0:
+            return 0, 0, width, height
+    except Exception:
+        pass
+
+    return 0, 0, 1920, 1080
+
+
+def _window_grid() -> tuple[int, int]:
+    raw_cols = (os.getenv("WINDOW_COLUMNS") or os.getenv("WINDOW_COLS") or "").strip()
+    raw_rows = (os.getenv("WINDOW_ROWS") or "").strip()
+    raw_total = (os.getenv("INSTANCES_TOTAL") or os.getenv("TOTAL_INSTANCES") or "").strip()
+
+    cols = 0
+    rows = 0
+    total = 0
+
+    if raw_cols:
+        try:
+            cols = int(raw_cols)
+        except ValueError:
+            cols = 0
+    if raw_rows:
+        try:
+            rows = int(raw_rows)
+        except ValueError:
+            rows = 0
+    if raw_total:
+        try:
+            total = int(raw_total)
+        except ValueError:
+            total = 0
+
+    if cols > 0 and rows > 0:
+        return cols, rows
+
+    if total == 4:
+        return 2, 2
+
+    if total > 0 and cols <= 0:
+        cols = max(1, int((total ** 0.5) + 0.9999))  # ceil(sqrt(total))
+    if cols <= 0:
+        cols = 3
+    if rows <= 0:
+        rows = max(1, (total + cols - 1) // cols) if total > 0 else 1
+
+    return cols, rows
+
+
+def _bounds_for_instance() -> dict | None:
+    if INSTANCE_ID <= 0:
+        return None
+
+    cols, rows = _window_grid()
+    if cols <= 0 or rows <= 0:
+        return None
+    if INSTANCE_ID > (cols * rows):
+        return None
+
+    work_left, work_top, work_width, work_height = _get_work_area()
+    col_width = max(1, work_width // cols)
+    row_height = max(1, work_height // rows)
+
+    idx = INSTANCE_ID - 1
+    col = idx % cols
+    row = idx // cols
+
+    left = work_left + col * col_width
+    top = work_top + row * row_height
+    width = col_width if col < (cols - 1) else (work_left + work_width - left)
+    height = row_height if row < (rows - 1) else (work_top + work_height - top)
+    return {"left": int(left), "top": int(top), "width": int(width), "height": int(height)}
+
+
 def find_chrome_exe():
     candidates = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -157,8 +251,13 @@ def launch_chrome_debug(user_data_dir, profile_dir=None):
         SITE_URL,
     ]
     if BRING_TO_FRONT:
-        cmd.insert(5, "--window-position=0,0")
-        cmd.insert(6, "--window-size=1280,800")
+        bounds = _bounds_for_instance()
+        if bounds:
+            cmd.insert(5, f"--window-position={bounds['left']},{bounds['top']}")
+            cmd.insert(6, f"--window-size={bounds['width']},{bounds['height']}")
+        else:
+            cmd.insert(5, "--window-position=0,0")
+            cmd.insert(6, "--window-size=1280,800")
     else:
         print("Iniciando Chrome em segundo plano (janela minimizada)...")
         cmd.insert(5, "--start-minimized")

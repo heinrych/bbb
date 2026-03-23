@@ -27,6 +27,37 @@ def _window_columns(default: int = 3) -> int:
     return default
 
 
+def _window_rows(default: int = 1) -> int:
+    for name in ("WINDOW_ROWS", "INSTANCES_ROWS"):
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return default
+
+
+def _grid_for_instances(total: int, default_columns: int = 3) -> tuple[int, int]:
+    """
+    Retorna (columns, rows). Para 4 instancias, padrao = 2x2.
+    Se total nao for informado, cai no default_columns x 1.
+    """
+    if total <= 0:
+        return default_columns, 1
+
+    if total == 4:
+        return 2, 2
+
+    # aproximacao simples: tenta deixar o grid mais "quadrado"
+    cols = max(1, int((total ** 0.5) + 0.9999))  # ceil(sqrt(total)) sem importar math
+    rows = max(1, (total + cols - 1) // cols)
+    return cols, rows
+
+
 def _get_work_area():
     try:
         rect = wintypes.RECT()
@@ -53,25 +84,46 @@ def _get_work_area():
     return 0, 0, 1920, 1080
 
 
-def _bounds_for_instance(columns: int | None = None):
+def _bounds_for_instance(columns: int | None = None, rows: int | None = None):
     if INSTANCE_ID <= 0:
         return None
+    instances_total = 0
+    raw_total = (os.getenv("INSTANCES_TOTAL") or os.getenv("TOTAL_INSTANCES") or "").strip()
+    if raw_total:
+        try:
+            instances_total = int(raw_total)
+        except ValueError:
+            instances_total = 0
+
+    default_cols, default_rows = _grid_for_instances(instances_total, default_columns=3)
     if columns is None:
-        columns = _window_columns(default=3)
-    if INSTANCE_ID > columns:
+        columns = _window_columns(default=default_cols)
+    if rows is None:
+        rows = _window_rows(default=default_rows)
+    if columns <= 0 or rows <= 0:
+        return None
+    if INSTANCE_ID > (columns * rows):
         return None
 
     work_left, work_top, work_width, work_height = _get_work_area()
     col_width = max(1, work_width // columns)
-    left = work_left + (INSTANCE_ID - 1) * col_width
-    width = col_width if INSTANCE_ID < columns else (work_left + work_width - left)
-    return {"left": int(left), "top": int(work_top), "width": int(width), "height": int(work_height)}
+    row_height = max(1, work_height // rows)
+
+    idx = INSTANCE_ID - 1
+    col = idx % columns
+    row = idx // columns
+
+    left = work_left + col * col_width
+    top = work_top + row * row_height
+    width = col_width if col < (columns - 1) else (work_left + work_width - left)
+    height = row_height if row < (rows - 1) else (work_top + work_height - top)
+    return {"left": int(left), "top": int(top), "width": int(width), "height": int(height)}
 
 
 def arrange_window(page, columns: int | None = None):
     if not BRING_TO_FRONT:
         return
-    bounds = _bounds_for_instance(columns=columns)
+    bounds = _bounds_for_instance(columns=columns, rows=None)
     if not bounds:
         return
 
