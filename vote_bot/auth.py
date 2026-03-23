@@ -4,8 +4,42 @@ import re
 
 from .config import *
 from .users import pick_user_email
-from .browser import safe_goto, minimize_window, safe_close_page, close_other_pages
+from .browser import (
+    connect_cdp,
+    ensure_devtools_or_launch,
+    ensure_page_alive,
+    safe_goto,
+    minimize_window,
+    safe_close_page,
+    close_other_pages,
+)
 from .counter import incrementar_contador
+
+
+class RestartInitialFlow(RuntimeError):
+    pass
+
+
+def is_hcaptcha_challenge_visible(page) -> bool:
+    """
+    Detecta a janela/iframe do desafio do hCaptcha (ex.: frame=challenge).
+
+    Isso não tenta resolver captcha; apenas detecta a UI para voltar ao fluxo inicial.
+    """
+    selectors = [
+        "iframe[src*='hcaptcha'][src*='frame=challenge']",
+        "iframe[src*='newassets.hcaptcha.com'][src*='frame=challenge']",
+        "iframe[title*='desafio hcaptcha' i]",
+        "iframe[title*='hcaptcha' i][src*='frame=challenge']",
+    ]
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if loc.count() > 0 and loc.is_visible():
+                return True
+        except Exception:
+            continue
+    return False
 
 def has_entrar(page):
     try:
@@ -47,22 +81,119 @@ def clear_page_cache(page):
     try:
         page.evaluate(
             """() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                if (window.caches && caches.keys) {
-                    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-                }
-                if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-                    navigator.serviceWorker.getRegistrations()
-                             .then(regs => regs.forEach(r => r.unregister()));
-                }
+                try { localStorage.clear(); } catch (e) {}
+                try { sessionStorage.clear(); } catch (e) {}
+                try {
+                    if (globalThis.caches && caches.keys) {
+                        caches.keys()
+                              .then(keys => keys.forEach(k => caches.delete(k)))
+                              .catch(() => {});
+                    }
+                } catch (e) {}
+                try {
+                    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+                        navigator.serviceWorker.getRegistrations()
+                                 .then(regs => regs.forEach(r => r.unregister()))
+                                 .catch(() => {});
+                    }
+                } catch (e) {}
             }"""
         )
     except Exception as e:
         print(f"Erro ao limpar cache da página: {e}")
 
 
+def clear_hcaptcha_cookies(page):
+    try:
+        if page.is_closed():
+            return
+    except Exception:
+        pass
+
+    try:
+        cookies = page.context.cookies()
+        filtered = []
+
+        for cookie in cookies:
+            domain = (cookie.get("domain") or "").lower()
+            if "hcaptcha" in domain or "cf" in domain:
+                continue
+            filtered.append(cookie)
+
+        page.context.clear_cookies()
+
+        if filtered:
+            page.context.add_cookies(filtered)
+
+        print("Cookies do hCaptcha limpos.")
+    except Exception as e:
+        print(f"Erro ao limpar cookies do hCaptcha: {e}")
+
+
+def recreate_page_after_captcha(page, playwright=None):
+    print("Recriando página para evitar lentidão do hCaptcha...")
+
+    for attempt in range(3):
+        try:
+            if playwright is not None:
+                page = ensure_page_alive(page, playwright)
+
+            browser = page.context.browser
+            try:
+                if hasattr(browser, "is_connected") and not browser.is_connected():
+                    raise RuntimeError("Browser desconectado")
+            except Exception:
+                pass
+
+            try:
+                clear_hcaptcha_cookies(page)
+            except Exception:
+                pass
+
+            try:
+                context = browser.contexts[0] if browser.contexts else browser.new_context()
+            except Exception as e:
+                print(f"Falha ao recriar pagina apos captcha: {e}")
+
+                if playwright is not None and ensure_devtools_or_launch(timeout=20):
+                    try:
+                        _, context = connect_cdp(playwright)
+                    except Exception as e2:
+                        print(f"Falha ao reconectar via CDP: {e2}")
+                        context = page.context
+                else:
+                    context = page.context
+
+            new_page = context.new_page()
+            minimize_window(new_page)
+            new_page = safe_goto(new_page, SITE_URL)
+
+            try:
+                if not page.is_closed():
+                    page.close()
+            except Exception:
+                pass
+
+            try:
+                close_other_pages(context, new_page)
+            except Exception:
+                pass
+
+            return new_page
+        except Exception as e:
+            print(f"Falha ao abrir nova pagina apos captcha: {e}")
+            time.sleep(1.5 + attempt)
+
+    try:
+        return hard_reset_browser(page)
+    except Exception as e:
+        print(f"Falha no hard_reset_browser apos captcha: {e}")
+        return page
+
+
 def clear_browser_state(page):
+    if page.is_closed():
+        return
     clear_page_cache(page)
     try:
         session = page.context.new_cdp_session(page)
@@ -147,18 +278,34 @@ def handle_optional_defer_prompt(page, timeout_ms=8000):
         time.sleep(0.25)
     return False
 
-def handle_captcha_and_refresh(page):
+def handle_captcha_and_refresh(page, playwright=None):
     """Tenta resolver captcha e recria a página se necessário"""
     try:
+        if is_hcaptcha_challenge_visible(page):
+            print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+            raise RestartInitialFlow("hCaptcha challenge visível")
+
         found_votar_novamente = False
+        captcha_clicked = False
         votar_novamente_selectors = [
             "button:has-text('Votar Novamente')",
-            "button[aria-label*='Votar novamente']",
-            "button[aria-label*='Votar Novamente']",
+            "button[aria-label*='votar novamente' i]",
             "[role='button']:has-text('Votar Novamente')",
+            "[role='button'][aria-label*='votar novamente' i]",
         ]
 
         def detect_votar_novamente_button():
+            try:
+                # acessible name inclui aria-label e texto visível
+                loc = page.get_by_role("button", name=re.compile(r"votar novamente", re.I)).first
+                if loc.count() > 0:
+                    try:
+                        if loc.is_visible():
+                            return True
+                    except Exception:
+                        return True
+            except Exception:
+                pass
             for scope in [page] + list(page.frames):
                 for sel in votar_novamente_selectors:
                     try:
@@ -176,29 +323,59 @@ def handle_captcha_and_refresh(page):
         
         for i in range(VOTAR_NOVAMENTE_RETRY):
                 
-            frame = page.frame_locator("iframe[src*='hcaptcha.com']").first
-            cb = frame.locator("div[role='checkbox']").first
-            
-            if cb.count() > 0:
-                print("hCaptcha detectado. Clicando para abrir...")
-                cb.wait_for(state="visible", timeout=5000)
-                cb.scroll_into_view_if_needed()
-                time.sleep(random.uniform(2.5, 5))
-                cb.click(timeout=5000, force=True)
-                break
+            try:
+                frame = page.frame_locator("iframe[src*='hcaptcha.com']").first
+                cb = frame.locator("div[role='checkbox']").first
+
+                if cb.count() > 0:
+                    print("hCaptcha detectado. Clicando para abrir...")
+                    cb.wait_for(state="visible", timeout=5000)
+                    cb.scroll_into_view_if_needed()
+                    time.sleep(random.uniform(2.5, 5))
+                    cb.click(timeout=5000, force=True)
+                    captcha_clicked = True
+
+                    # Se isso abrir a janela de desafio, não tentamos resolver: reinicia o fluxo.
+                    deadline = time.time() + 4.0
+                    while time.time() < deadline:
+                        if is_hcaptcha_challenge_visible(page):
+                            print("Desafio do hCaptcha abriu. Voltando ao fluxo inicial...")
+                            raise RestartInitialFlow("hCaptcha challenge abriu após click")
+                        time.sleep(0.25)
+                    break
+            except RestartInitialFlow:
+                raise
+            except Exception:
+                # iframe/elemento pode ainda não estar pronto; tenta novamente
+                pass
             
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar hCaptcha...")
             time.sleep(random.uniform(2,4))
             
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
-                raise("hCaptcha não detectado após várias tentativas. Continuando sem clicar.")
-    
+                print("hCaptcha não detectado após várias tentativas. Reiniciando fluxo inicial...")
+                raise RestartInitialFlow("hCaptcha não detectado após várias tentativas")
+
+        if not captcha_clicked:
+            print("Não consegui clicar no hCaptcha. Reiniciando fluxo inicial...")
+            raise RestartInitialFlow("hCaptcha não foi clicado")
+     
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
 
-            print("Resolva o hCaptcha manualmente... aguardando 20s")
-            time.sleep(6)
+            if is_hcaptcha_challenge_visible(page):
+                print("Janela do desafio do hCaptcha detectada durante espera. Voltando ao fluxo inicial...")
+                raise RestartInitialFlow("hCaptcha challenge visível durante espera")
+
+            # Se não abriu janela de desafio, aguardar um pouco para o fluxo "invisible" completar.
+            wait_s = 6.0
+            start = time.time()
+            while time.time() - start < wait_s:
+                if is_hcaptcha_challenge_visible(page):
+                    print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+                    raise RestartInitialFlow("hCaptcha challenge visível durante espera curta")
+                time.sleep(0.5)
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
@@ -222,7 +399,8 @@ def handle_captcha_and_refresh(page):
 
                     if found_votar_novamente:
                         break
-                    continue
+                    if i + 1 < VOTAR_NOVAMENTE_RETRY:
+                        continue
 
                 print("hCaptcha ainda parece presente...")
 
@@ -239,32 +417,10 @@ def handle_captcha_and_refresh(page):
             print("Botão 'Votar Novamente' não foi detectado; contador não foi incrementado.")
                           
         # Após resolver, recria a página para evitar lentidão
-        print("Recriando página para evitar lentidão pós-captcha...")
-        context = page.context
-        new_page = context.new_page()
-        minimize_window(new_page)
-        
-        # Navega primeiro; só depois fecha as outras guias.
-        # Isso evita ficar com uma guia nova presa em about:blank enquanto a antiga permanece aberta.
-        try:
-            print("Navegando na nova pagina...")
-            new_page.goto(SITE_URL, wait_until="commit", timeout=20000)
-            try:
-                new_page.wait_for_load_state("domcontentloaded", timeout=15000)
-            except Exception:
-                pass
-            print("Nova pagina pronta.")
-        except Exception as nav_err:
-            try:
-                new_page.close()
-            except Exception:
-                pass
-            print(f"Falha ao navegar na nova pagina (mantendo a atual): {nav_err}")
-            return page
+        return recreate_page_after_captcha(page, playwright)
 
-        close_other_pages(context, new_page)
-        return new_page
-
+    except RestartInitialFlow:
+        raise
     except Exception as e:
         print(f"Sem hCaptcha visível ou erro: {e}")
         
@@ -283,15 +439,9 @@ def handle_captcha_and_refresh(page):
                 """)
                 print("Cliquei no hCaptcha via evaluate (fallback). Aguardando resolução...")
                 time.sleep(20)
-                
+
                 # Recria a página
-                context = page.context
-                new_page = context.new_page()
-                minimize_window(new_page)
-                safe_close_page(page)
-                close_other_pages(context, new_page)
-                new_page = safe_goto(new_page, SITE_URL)
-                return new_page
+                return recreate_page_after_captcha(page, playwright)
         except:
             raise Exception("hCaptcha não detectado e fallback falhou. Continuando sem clicar.")
 
@@ -835,15 +985,28 @@ def clean_cache_and_login(page):
 
     # Salva o contexto antes de fechar a página
     context = page.context
+    try:
+        if hasattr(context, "is_closed") and context.is_closed():
+            raise RuntimeError("Contexto fechado antes da limpeza.")
+    except Exception as e:
+        print(f"Contexto inválido: {e}")
+        return page
 
     try:
-        # Fecha a página atual
-        safe_close_page(page)
-    except:
+        if not page.is_closed():
+            try:
+                page.close(timeout=3000)
+            except Exception:
+                safe_close_page(page)
+    except Exception:
         pass
 
     # Cria uma nova página completamente nova
-    page = context.new_page()
+    try:
+        page = context.new_page()
+    except Exception as e:
+        print(f"Nao consegui abrir nova pagina no contexto: {e}")
+        return page
     close_other_pages(context, page)
     minimize_window(page)
 
@@ -856,7 +1019,7 @@ def clean_cache_and_login(page):
     # Força uma nova sessão
     try:
         context.clear_cookies()
-    except:
+    except Exception:
         pass
 
     for i in range(2):
@@ -893,6 +1056,3 @@ def hard_reset_browser(page):
     new_page = safe_goto(new_page, SITE_URL)
 
     return new_page
-
-
-

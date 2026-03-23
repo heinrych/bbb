@@ -4,11 +4,77 @@ import time
 import random
 import urllib.request
 from pathlib import Path
+import ctypes
+from ctypes import wintypes
 
 from .config import *
 
 _LAST_BROWSER = None
 _LAST_CONTEXT = None
+
+
+def _get_work_area():
+    try:
+        rect = wintypes.RECT()
+        SPI_GETWORKAREA = 0x0030
+        ok = ctypes.windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, ctypes.byref(rect), 0)
+        if ok:
+            left = int(rect.left)
+            top = int(rect.top)
+            width = int(rect.right - rect.left)
+            height = int(rect.bottom - rect.top)
+            if width > 0 and height > 0:
+                return left, top, width, height
+    except Exception:
+        pass
+
+    try:
+        width = int(ctypes.windll.user32.GetSystemMetrics(0))
+        height = int(ctypes.windll.user32.GetSystemMetrics(1))
+        if width > 0 and height > 0:
+            return 0, 0, width, height
+    except Exception:
+        pass
+
+    return 0, 0, 1920, 1080
+
+
+def _bounds_for_instance(columns: int = 3):
+    if INSTANCE_ID <= 0:
+        return None
+    if INSTANCE_ID > columns:
+        return None
+
+    work_left, work_top, work_width, work_height = _get_work_area()
+    col_width = max(1, work_width // columns)
+    left = work_left + (INSTANCE_ID - 1) * col_width
+    width = col_width if INSTANCE_ID < columns else (work_left + work_width - left)
+    return {"left": int(left), "top": int(work_top), "width": int(width), "height": int(work_height)}
+
+
+def arrange_window(page, columns: int = 3):
+    if not BRING_TO_FRONT:
+        return
+    bounds = _bounds_for_instance(columns=columns)
+    if not bounds:
+        return
+
+    try:
+        session = page.context.new_cdp_session(page)
+        info = session.send("Browser.getWindowForTarget")
+        window_id = info.get("windowId")
+        if window_id is None:
+            return
+        try:
+            session.send(
+                "Browser.setWindowBounds",
+                {"windowId": window_id, "bounds": {"windowState": "normal"}},
+            )
+        except Exception:
+            pass
+        session.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": bounds})
+    except Exception:
+        pass
 
 def find_chrome_exe():
     candidates = [
@@ -33,12 +99,19 @@ def launch_chrome_debug(user_data_dir, profile_dir=None):
         SITE_URL,
     ]
     if BRING_TO_FRONT:
-        cmd.insert(5, "--window-position=0,0")
-        cmd.insert(6, "--window-size=1280,800")
+        bounds = _bounds_for_instance(columns=3)
+        if bounds:
+            cmd.insert(5, f"--window-position={bounds['left']},{bounds['top']}")
+            cmd.insert(6, f"--window-size={bounds['width']},{bounds['height']}")
+        else:
+            cmd.insert(5, "--window-position=0,0")
+            cmd.insert(6, "--window-size=1280,800")
     else:
         print("Iniciando Chrome em segundo plano (janela minimizada)...")
         cmd.insert(5, "--start-minimized")
-        cmd.insert(6, "--window-position=-32000,-32000")
+        # Evita forçar window-position aqui: em Windows + Áreas de Trabalho Virtuais,
+        # manipular bounds/posição pode fazer a janela "voltar" para a área original.
+        cmd.insert(6, "--window-size=800,600")
     if profile_dir:
         cmd.insert(4, f"--profile-directory={profile_dir}")
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -127,12 +200,14 @@ def minimize_window(page):
         info = session.send("Browser.getWindowForTarget")
         window_id = info.get("windowId")
         if window_id is not None:
-
-            session.send(
-                "Browser.setWindowBounds",
-                {"windowId": window_id, "bounds": {"left": -32000, "top": -32000, "width": 800, "height": 600}},
-            )
-                
+            try:
+                session.send(
+                    "Browser.setWindowBounds",
+                    {"windowId": window_id, "bounds": {"windowState": "minimized"}},
+                )
+            except Exception:
+                pass
+                 
     except Exception:
         pass
 
@@ -142,20 +217,68 @@ def safe_close_page(page):
         ctx = page.context
         if len(ctx.pages) <= 1:
             return False
-        page.close()
+        page.close(timeout=3000)
         return True
     except Exception:
         return False
 
 
-def close_other_pages(context, keep_page):
+def _same_page(a, b) -> bool:
+    if a is b:
+        return True
+    try:
+        a_impl = getattr(a, "_impl_obj", None)
+        b_impl = getattr(b, "_impl_obj", None)
+        return a_impl is not None and a_impl == b_impl
+    except Exception:
+        return False
+
+
+def _close_page_via_cdp(page) -> bool:
+    try:
+        session = page.context.new_cdp_session(page)
+    except Exception:
+        return False
+
+    try:
+        info = session.send("Target.getTargetInfo")
+        target_id = (info.get("targetInfo") or {}).get("targetId")
+        if not target_id:
+            return False
+        session.send("Target.closeTarget", {"targetId": target_id})
+        return True
+    except Exception:
+        return False
+
+
+def close_other_pages(context, keep_page, timeout_ms: int = 3000):
     try:
         for pg in list(context.pages):
-            if pg != keep_page:
+            if _same_page(pg, keep_page):
+                continue
+            if pg.is_closed():
+                continue
+            try:
+                pg_url = pg.url
+            except Exception:
+                pg_url = ""
+
+            if not pg_url:
+                pg_url = "<sem-url>"
+            try:
                 try:
-                    pg.close()
+                    # Em alguns casos (captcha/tracking pesado), fechar uma guia pode travar.
+                    # Timeout curto evita bloquear o loop principal indefinidamente.
+                    pg.close(timeout=timeout_ms)
                 except Exception:
-                    pass
+                    # fallback para CDP, útil quando o Playwright não consegue encerrar a guia
+                    if not _close_page_via_cdp(pg):
+                        try:
+                            print(f"Aviso: nao consegui fechar a guia: {pg_url}")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
     except Exception:
         pass
 

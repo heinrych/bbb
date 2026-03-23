@@ -59,18 +59,43 @@ def click_candidato(page, nome):
 
 def click_votar_novamente(page):
     def try_click_in_scope(scope, label):
-        selectors = [
+        try:
+            btn = scope.get_by_role("button", name=re.compile(r"votar novamente", re.I)).first
+            if btn.count() > 0:
+                btn.wait_for(state="visible", timeout=600000)
+                btn.scroll_into_view_if_needed()
+                btn.click(timeout=400000, force=True)
+                print(f"Cliquei em 'Votar Novamente' ({label}/role).")
+                return True
+        except Exception:
+            pass
+
+        text_selectors = [
             "button:visible",
             "[role='button']:visible",
             "a:visible",
         ]
-        for sel in selectors:
+        aria_selectors = [
+            "button[aria-label*='votar novamente' i]:visible",
+            "[role='button'][aria-label*='votar novamente' i]:visible",
+        ]
+        for sel in text_selectors:
             try:
                 btn = scope.locator(sel, has_text=re.compile(r"votar novamente", re.I)).first
                 btn.wait_for(state="visible", timeout=600000)
                 btn.scroll_into_view_if_needed()
                 btn.click(timeout=400000, force=True)
                 print(f"Cliquei em 'Votar Novamente' ({label}).")
+                return True
+            except Exception:
+                continue
+        for sel in aria_selectors:
+            try:
+                btn = scope.locator(sel).first
+                btn.wait_for(state="visible", timeout=600000)
+                btn.scroll_into_view_if_needed()
+                btn.click(timeout=400000, force=True)
+                print(f"Cliquei em 'Votar Novamente' ({label}/aria-label).")
                 return True
             except Exception:
                 continue
