@@ -1,6 +1,7 @@
 ﻿import time
 import random
 import re
+from pathlib import Path
 
 from .config import *
 from .users import pick_user_email
@@ -18,6 +19,36 @@ from .counter import incrementar_contador
 
 class RestartInitialFlow(RuntimeError):
     pass
+
+
+def _dump_debug_artifacts(page, prefix: str):
+    try:
+        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+
+    ts = int(time.time() * 1000)
+    try:
+        url = page.url
+    except Exception:
+        url = ""
+
+    base = f"{prefix}_{ts}"
+
+    try:
+        screenshot_path = Path(ARTIFACTS_DIR) / f"{base}.png"
+        page.screenshot(path=str(screenshot_path), full_page=True)
+        print(f"Debug: screenshot salvo: {screenshot_path} (url={url})")
+    except Exception:
+        pass
+
+    try:
+        html_path = Path(ARTIFACTS_DIR) / f"{base}.html"
+        html = page.content()
+        html_path.write_text(html, encoding="utf-8", errors="ignore")
+        print(f"Debug: html salvo: {html_path}")
+    except Exception:
+        pass
 
 
 def is_hcaptcha_challenge_visible(page) -> bool:
@@ -166,7 +197,14 @@ def recreate_page_after_captcha(page, playwright=None):
 
             new_page = context.new_page()
             minimize_window(new_page)
-            new_page = safe_goto(new_page, SITE_URL)
+            new_page = safe_goto(
+                new_page,
+                SITE_URL,
+                max_attempts=HCAPTCHA_FAST_GOTO_MAX_ATTEMPTS,
+                base_wait=1.5,
+                timeout_ms_base=HCAPTCHA_FAST_GOTO_TIMEOUT_MS_BASE,
+                timeout_ms_step=HCAPTCHA_FAST_GOTO_TIMEOUT_MS_STEP,
+            )
 
             try:
                 if not page.is_closed():
@@ -182,6 +220,10 @@ def recreate_page_after_captcha(page, playwright=None):
             return new_page
         except Exception as e:
             print(f"Falha ao abrir nova pagina apos captcha: {e}")
+            try:
+                _dump_debug_artifacts(page, "captcha_recreate_fail")
+            except Exception:
+                pass
             time.sleep(1.5 + attempt)
 
     try:
@@ -281,6 +323,7 @@ def handle_optional_defer_prompt(page, timeout_ms=8000):
 def handle_captcha_and_refresh(page, playwright=None):
     """Tenta resolver captcha e recria a página se necessário"""
     try:
+        overall_deadline = time.time() + max(10.0, float(HCAPTCHA_STUCK_MAX_S))
         if is_hcaptcha_challenge_visible(page):
             print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
             raise RestartInitialFlow("hCaptcha challenge visível")
@@ -322,7 +365,11 @@ def handle_captcha_and_refresh(page, playwright=None):
             return False
         
         for i in range(VOTAR_NOVAMENTE_RETRY):
-                
+
+            if time.time() > overall_deadline:
+                _dump_debug_artifacts(page, "captcha_stuck_before_click")
+                raise RestartInitialFlow("hCaptcha carregando por muito tempo (antes do click)")
+                 
             try:
                 frame = page.frame_locator("iframe[src*='hcaptcha.com']").first
                 cb = frame.locator("div[role='checkbox']").first
@@ -363,6 +410,10 @@ def handle_captcha_and_refresh(page, playwright=None):
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
+
+            if time.time() > overall_deadline:
+                _dump_debug_artifacts(page, "captcha_stuck_after_click")
+                raise RestartInitialFlow("hCaptcha carregando por muito tempo (apos click)")
 
             if is_hcaptcha_challenge_visible(page):
                 print("Janela do desafio do hCaptcha detectada durante espera. Voltando ao fluxo inicial...")

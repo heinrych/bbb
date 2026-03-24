@@ -85,5 +85,12 @@ MAX_INTERATIONS_NOW = _int_env("MAX_INTERATIONS_NOW", 20)
 VOTAR_NOVAMENTE_RETRY = 3
 KILL_CHROME_ON_RETRY = False
 
+# Quando o hCaptcha/anti-bot deixa a navegação lenta, é melhor "falhar rápido"
+# e recriar a página/contexto do que ficar minutos preso em navegação.
+HCAPTCHA_STUCK_MAX_S = _int_env("HCAPTCHA_STUCK_MAX_S", 35)
+HCAPTCHA_FAST_GOTO_MAX_ATTEMPTS = _int_env("HCAPTCHA_FAST_GOTO_MAX_ATTEMPTS", 2)
+HCAPTCHA_FAST_GOTO_TIMEOUT_MS_BASE = _int_env("HCAPTCHA_FAST_GOTO_TIMEOUT_MS_BASE", 25000)
+HCAPTCHA_FAST_GOTO_TIMEOUT_MS_STEP = _int_env("HCAPTCHA_FAST_GOTO_TIMEOUT_MS_STEP", 10000)
+
 _bring_to_front = (os.getenv("BRING_TO_FRONT") or "").strip().lower()
 BRING_TO_FRONT = True

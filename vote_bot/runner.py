@@ -18,13 +18,14 @@ from .browser import (
     ensure_page_alive,
     close_other_pages,
 )
-from .actions import click_candidato
+from .actions import click_candidato, setup_network_logging
 from .counter import interacao_atual
 from .auth import (
     RestartInitialFlow,
     ensure_authenticated,
     clean_cache_and_login,
     handle_captcha_and_refresh,
+    recreate_page_after_captcha,
     hard_reset_browser,
     is_hcaptcha_challenge_visible,
 )
@@ -77,6 +78,8 @@ def main():
             else:
                 minimize_window(page)
 
+        setup_network_logging(page)
+
         if BRING_TO_FRONT:
             page.bring_to_front()
             arrange_window(page)
@@ -103,7 +106,8 @@ def main():
                 page = ensure_page_alive(page, p)
                 if is_hcaptcha_challenge_visible(page):
                     print("Janela do desafio do hCaptcha detectada. Reiniciando fluxo inicial...")
-                    page = safe_goto(page, SITE_URL)
+                    page = recreate_page_after_captcha(page, p)
+                    setup_network_logging(page)
                     page = ensure_authenticated(page)
                     continue
                 if "authx.globoid.globo.com" in page.url or page.locator("input[name=email]").count() > 0:
@@ -135,7 +139,8 @@ def main():
                 except RestartInitialFlow as restart_err:
                     print(f"{restart_err}. Reiniciando fluxo inicial...")
                     page = ensure_page_alive(page, p)
-                    page = safe_goto(page, SITE_URL)
+                    page = recreate_page_after_captcha(page, p)
+                    setup_network_logging(page)
                     page = ensure_authenticated(page)
                     continue
                 try:
@@ -156,6 +161,7 @@ def main():
                     minimize_window(new_page)
 
                     page = safe_goto(new_page, SITE_URL)
+                    setup_network_logging(page)
                     close_other_pages(context, page)
                     page = ensure_authenticated(page)
 

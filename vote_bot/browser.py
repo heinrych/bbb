@@ -351,13 +351,20 @@ def close_other_pages(context, keep_page, timeout_ms: int = 3000):
         pass
 
 
-def safe_goto(page, url, max_attempts=4, base_wait=2.0):
+def safe_goto(
+    page,
+    url,
+    max_attempts=4,
+    base_wait=2.0,
+    timeout_ms_base: int = 60000,
+    timeout_ms_step: int = 15000,
+):
     current_page = page
     attempt = 0
     while attempt < max_attempts:
         try:
             wait_mode = "domcontentloaded" if attempt < 2 else "commit"
-            timeout_ms = 60000 + (attempt * 15000)
+            timeout_ms = timeout_ms_base + (attempt * timeout_ms_step)
             if current_page.is_closed():
                 raise RuntimeError("Page closed before navigation")
             current_page.goto(url, wait_until=wait_mode, timeout=timeout_ms)
