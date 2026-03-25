@@ -12,6 +12,7 @@ from .config import *
 _LAST_BROWSER = None
 _LAST_CONTEXT = None
 
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 
 def _window_columns(default: int = 3) -> int:
     for name in ("WINDOW_COLUMNS", "WINDOW_COLS", "INSTANCES_TOTAL", "TOTAL_INSTANCES"):
@@ -158,33 +159,61 @@ def find_chrome_exe():
 
 def launch_chrome_debug(user_data_dir, profile_dir=None):
     chrome_exe = find_chrome_exe()
+    
     cmd = [
         chrome_exe,
         f"--remote-debugging-port={DEBUG_PORT}",
         "--remote-debugging-address=127.0.0.1",
         f"--user-data-dir={user_data_dir}",
         "--new-window",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-infobars",
+        "--disable-notifications",
+        "--disable-popup-blocking",
+        "--disable-extensions",
+        "--disable-accelerated-2d-canvas",
+        "--disable-gpu",                       # útil quando minimizado
+        f"--user-agent={USER_AGENT}",
         SITE_URL,
     ]
+
+    # Flags mais seguros e que ainda funcionam em 2026
+    disable_features = [
+        "IsolateOrigins",
+        "site-per-process",          # ou SitePerProcess em algumas versões
+        "ChromeWhatsNewUI",
+        "OptimizationGuideModelDownloading",
+        "InterestFeedContentSuggestions",
+    ]
+    
+    cmd.append(f"--disable-features={','.join(disable_features)}")
+
+    # Comportamento da janela
     if BRING_TO_FRONT:
         bounds = _bounds_for_instance()
         if bounds:
-            cmd.insert(5, f"--window-position={bounds['left']},{bounds['top']}")
-            cmd.insert(6, f"--window-size={bounds['width']},{bounds['height']}")
+            cmd.extend([
+                f"--window-position={bounds['left']},{bounds['top']}",
+                f"--window-size={bounds['width']},{bounds['height']}",
+            ])
         else:
-            cmd.insert(5, "--window-position=0,0")
-            cmd.insert(6, "--window-size=1280,800")
+            cmd.extend(["--window-position=0,0", "--window-size=1366,768"])
     else:
-        print("Iniciando Chrome em segundo plano (janela minimizada)...")
-        cmd.insert(5, "--start-minimized")
-        # Evita forçar window-position aqui: em Windows + Áreas de Trabalho Virtuais,
-        # manipular bounds/posição pode fazer a janela "voltar" para a área original.
-        cmd.insert(6, "--window-size=800,600")
+        print("Iniciando Chrome minimizado...")
+        cmd.extend([
+            "--start-minimized",
+            "--window-size=800,600",
+        ])
+
     if profile_dir:
         cmd.insert(4, f"--profile-directory={profile_dir}")
+
+    # Debug útil (mostra só os flags principais)
+    print("Lançando Chrome com flags anti-detecção:")
+    print("   --user-agent=...", f"--disable-features={','.join(disable_features)}")
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
+    
 def close_all_chrome():
     subprocess.run(
         ["taskkill", "/F", "/IM", "chrome.exe"],
@@ -211,7 +240,12 @@ def wait_devtools(port, timeout=25):
 def connect_cdp(playwright):
     global _LAST_BROWSER, _LAST_CONTEXT
     browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{DEBUG_PORT}")
-    context = browser.contexts[0] if browser.contexts else browser.new_context()
+    context = browser.contexts[0] if browser.contexts else browser.new_context(
+        viewport={"width": 1366, "height": 768},
+        user_agent=USER_AGENT,          # reforço
+        locale="pt-BR",
+        timezone_id="America/Sao_Paulo",
+    )
     _LAST_BROWSER = browser
     _LAST_CONTEXT = context
     return browser, context
@@ -240,6 +274,7 @@ def ensure_page_alive(page, playwright):
             _ = _LAST_CONTEXT.pages
             page = _LAST_CONTEXT.new_page()
             minimize_window(page)
+            apply_stealth(page)
             return page
     except Exception:
         pass
@@ -248,6 +283,7 @@ def ensure_page_alive(page, playwright):
         _, context = connect_cdp(playwright)
         page = context.new_page()
         minimize_window(page)
+        apply_stealth(page)
         return page
     except Exception as e:
         msg = str(e)
@@ -256,6 +292,7 @@ def ensure_page_alive(page, playwright):
                 _, context = connect_cdp(playwright)
                 page = context.new_page()
                 minimize_window(page)
+                apply_stealth(page)
                 return page
         raise
 

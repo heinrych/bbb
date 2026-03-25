@@ -35,12 +35,12 @@ def _dump_debug_artifacts(page, prefix: str):
 
     base = f"{prefix}_{ts}"
 
-    try:
-        screenshot_path = Path(ARTIFACTS_DIR) / f"{base}.png"
-        page.screenshot(path=str(screenshot_path), full_page=True)
-        print(f"Debug: screenshot salvo: {screenshot_path} (url={url})")
-    except Exception:
-        pass
+    # try:
+    #     screenshot_path = Path(ARTIFACTS_DIR) / f"{base}.png"
+    #     page.screenshot(path=str(screenshot_path), full_page=True)
+    #     print(f"Debug: screenshot salvo: {screenshot_path} (url={url})")
+    # except Exception:
+    #     pass
 
     try:
         html_path = Path(ARTIFACTS_DIR) / f"{base}.html"

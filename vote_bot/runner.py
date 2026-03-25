@@ -129,9 +129,9 @@ def main():
                 if not click_candidato(page, CANDIDATO):
                     print("Aviso: nao consegui clicar no candidato (nenhum seletor funcionou).")
 
-                screenshot_path = ARTIFACTS_DIR / "01_card_selecionado.png"
-                page.screenshot(path=str(screenshot_path), full_page=True)
-                print(f"Screenshot salvo: {screenshot_path}")
+                # screenshot_path = ARTIFACTS_DIR / "01_card_selecionado.png"
+                # page.screenshot(path=str(screenshot_path), full_page=True)
+                # print(f"Screenshot salvo: {screenshot_path}")
 
                 # tentar interagir com hCaptcha checkbox se presente
                 try:
