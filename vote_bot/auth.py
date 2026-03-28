@@ -251,6 +251,7 @@ def clear_browser_state(page):
 
     clear_page_cache(page)
 
+    session = None
     try:
         session = page.context.new_cdp_session(page)
         session.send("Network.enable")
@@ -258,7 +259,14 @@ def clear_browser_state(page):
         session.send("Network.clearBrowserCookies")
     except Exception as e:
         print(f"Nao consegui limpar cache/cookies via CDP: {e}")
+    finally:
+        try:
+            if session is not None:
+                session.detach()
+        except Exception:
+            pass
 
+    session = None
     try:
         session = page.context.new_cdp_session(page)
         current_url = page.url or ""
@@ -272,6 +280,12 @@ def clear_browser_state(page):
             })
     except Exception:
         pass
+    finally:
+        try:
+            if session is not None:
+                session.detach()
+        except Exception:
+            pass
 
 
 def goto_login_from_site(page):

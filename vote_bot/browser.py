@@ -49,11 +49,11 @@ def apply_stealth(page):
                 );
                 
                 Object.defineProperty(navigator, 'hardwareConcurrency', {
-                    get: () => 8
+                    get: () => [4, 8, 12, 16][Math.floor(Math.random() * 4)]
                 });
                 
                 Object.defineProperty(navigator, 'deviceMemory', {
-                    get: () => 8
+                    get: () => [4, 8, 16][Math.floor(Math.random() * 3)]
                 });
                 
                 Object.defineProperty(navigator, 'platform', {
@@ -304,6 +304,7 @@ def arrange_window(page, columns: int | None = None):
     if not bounds:
         return
 
+    session = None
     try:
         session = page.context.new_cdp_session(page)
         info = session.send("Browser.getWindowForTarget")
@@ -320,6 +321,12 @@ def arrange_window(page, columns: int | None = None):
         session.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": bounds})
     except Exception:
         pass
+    finally:
+        try:
+            if session is not None:
+                session.detach()
+        except Exception:
+            pass
 
 def find_chrome_exe():
     candidates = [
@@ -498,6 +505,7 @@ def ensure_page_alive(page, playwright):
 def minimize_window(page):
     if BRING_TO_FRONT:
         return
+    session = None
     try:
         session = page.context.new_cdp_session(page)
         info = session.send("Browser.getWindowForTarget")
@@ -510,9 +518,14 @@ def minimize_window(page):
                 )
             except Exception:
                 pass
-                 
     except Exception:
         pass
+    finally:
+        try:
+            if session is not None:
+                session.detach()
+        except Exception:
+            pass
 
 
 def safe_close_page(page):
