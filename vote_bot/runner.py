@@ -154,6 +154,7 @@ def main():
                 total_interacoes = interacao_atual()
                 # a cada 3 interações recria a página para evitar acúmulo de estado
                 if total_interacoes % MAX_INTERATIONS_NOW == 0:
+                    os.system("cls" if os.name == "nt" else "clear")
                     print("Recriando página para evitar acúmulo de estado...")
                     page = ensure_page_alive(page, p)
                     context = page.context
