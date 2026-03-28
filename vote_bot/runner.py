@@ -96,9 +96,8 @@ def main():
             print(f"[{datetime.now().strftime('%H:%M:%S')}]Erro ao navegar: {e}")
             time.sleep(random.uniform(10, 30))
             raise
-
-        page = ensure_page_alive(page, p)
-        page = ensure_authenticated(page)
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Navegação finalizada")
 
         while True:
 

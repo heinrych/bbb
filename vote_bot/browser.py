@@ -6,6 +6,7 @@ import urllib.request
 from pathlib import Path
 import ctypes
 from ctypes import wintypes
+from datetime import datetime
 
 from .config import *
 
@@ -16,6 +17,9 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 
 def apply_stealth(page):
     try:
+        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Aplicação de stealth")
+
         page.add_init_script("""
             () => {
                 Object.defineProperty(navigator, 'webdriver', {
@@ -181,6 +185,8 @@ def apply_stealth(page):
                 } catch (e) {}
             }
         """)
+
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Stealth executado com sucesso")
     except Exception as e:
         print(f"Erro ao aplicar stealth scripts: {e}")
 
@@ -453,6 +459,7 @@ def ensure_devtools_or_launch(profile_to_use=None, timeout=25):
 
 
 def ensure_page_alive(page, playwright):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Aplicação de ensure page alive")
     try:
         if page is not None and not page.is_closed():
             _ = page.context.pages
