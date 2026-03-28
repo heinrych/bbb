@@ -13,6 +13,7 @@ from .browser import (
     minimize_window,
     safe_close_page,
     close_other_pages,
+    apply_stealth,
 )
 from .counter import incrementar_contador
 
@@ -105,33 +106,37 @@ def has_entrar(page):
 
 def clear_page_cache(page):
     try:
-        page.context.clear_cookies()
+        if page.is_closed():
+            return
     except Exception:
-        pass
+        return
 
     try:
         page.evaluate(
-            """() => {
+            """async () => {
                 try { localStorage.clear(); } catch (e) {}
                 try { sessionStorage.clear(); } catch (e) {}
                 try {
                     if (globalThis.caches && caches.keys) {
-                        caches.keys()
-                              .then(keys => keys.forEach(k => caches.delete(k)))
-                              .catch(() => {});
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map(k => caches.delete(k)));
                     }
                 } catch (e) {}
                 try {
                     if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-                        navigator.serviceWorker.getRegistrations()
-                                 .then(regs => regs.forEach(r => r.unregister()))
-                                 .catch(() => {});
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map(r => r.unregister()));
                     }
                 } catch (e) {}
             }"""
         )
     except Exception as e:
-        print(f"Erro ao limpar cache da página: {e}")
+        print(f"Erro ao limpar storage/cache da página: {e}")
+
+    try:
+        page.context.clear_cookies()
+    except Exception as e:
+        print(f"Erro ao limpar cookies do contexto: {e}")
 
 
 def clear_hcaptcha_cookies(page):
@@ -139,24 +144,26 @@ def clear_hcaptcha_cookies(page):
         if page.is_closed():
             return
     except Exception:
-        pass
+        return
+
+    _CAPTCHA_DOMAINS = {"hcaptcha.com", "newassets.hcaptcha.com", "cloudflare.com", "challenges.cloudflare.com"}
 
     try:
         cookies = page.context.cookies()
-        filtered = []
-
-        for cookie in cookies:
-            domain = (cookie.get("domain") or "").lower()
-            if "hcaptcha" in domain or "cf" in domain:
-                continue
-            filtered.append(cookie)
+        filtered = [
+            c for c in cookies
+            if not any(
+                (c.get("domain") or "").lower().lstrip(".").endswith(d)
+                for d in _CAPTCHA_DOMAINS
+            )
+        ]
 
         page.context.clear_cookies()
 
         if filtered:
             page.context.add_cookies(filtered)
 
-        print("Cookies do hCaptcha limpos.")
+        print(f"Cookies de captcha limpos. Mantidos: {len(filtered)}/{len(cookies)}")
     except Exception as e:
         print(f"Erro ao limpar cookies do hCaptcha: {e}")
 
@@ -196,6 +203,7 @@ def recreate_page_after_captcha(page, playwright=None):
                     context = page.context
 
             new_page = context.new_page()
+            apply_stealth(new_page)
             minimize_window(new_page)
             new_page = safe_goto(
                 new_page,
@@ -220,10 +228,10 @@ def recreate_page_after_captcha(page, playwright=None):
             return new_page
         except Exception as e:
             print(f"Falha ao abrir nova pagina apos captcha: {e}")
-            try:
-                _dump_debug_artifacts(page, "captcha_recreate_fail")
-            except Exception:
-                pass
+            # try:
+            #     _dump_debug_artifacts(page, "captcha_recreate_fail")
+            # except Exception:
+            #     pass
             time.sleep(1.5 + attempt)
 
     try:
@@ -234,20 +242,41 @@ def recreate_page_after_captcha(page, playwright=None):
 
 
 def clear_browser_state(page):
-    if page.is_closed():
+    try:
+        if page.is_closed():
+            return
+    except Exception:
         return
+
     clear_page_cache(page)
+
     try:
         session = page.context.new_cdp_session(page)
         session.send("Network.enable")
-        session.send("Network.clearBrowserCookies")
         session.send("Network.clearBrowserCache")
+        session.send("Network.clearBrowserCookies")
     except Exception as e:
         print(f"Nao consegui limpar cache/cookies via CDP: {e}")
+
+    try:
+        session = page.context.new_cdp_session(page)
+        current_url = page.url or ""
+        if current_url and current_url != "about:blank":
+            from urllib.parse import urlparse
+            parsed = urlparse(current_url)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            session.send("Storage.clearDataForOrigin", {
+                "origin": origin,
+                "storageTypes": "all",
+            })
+    except Exception:
+        pass
 
 
 def goto_login_from_site(page):
     """Entra no fluxo de login a partir do Gshow para evitar endpoints authx desatualizados."""
+    apply_stealth(page)
+    time.sleep(random.uniform(1.5, 3.0))
     page = safe_goto(page, SITE_URL)
 
     login_selectors = [
@@ -367,7 +396,6 @@ def handle_captcha_and_refresh(page, playwright=None):
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
             if time.time() > overall_deadline:
-                _dump_debug_artifacts(page, "captcha_stuck_before_click")
                 raise RestartInitialFlow("hCaptcha carregando por muito tempo (antes do click)")
                  
             try:
@@ -412,7 +440,6 @@ def handle_captcha_and_refresh(page, playwright=None):
             print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar resolução do hCaptcha...")
 
             if time.time() > overall_deadline:
-                _dump_debug_artifacts(page, "captcha_stuck_after_click")
                 raise RestartInitialFlow("hCaptcha carregando por muito tempo (apos click)")
 
             if is_hcaptcha_challenge_visible(page):
@@ -500,6 +527,9 @@ def handle_captcha_and_refresh(page, playwright=None):
 
 
 def perform_login(page, max_attempts=3, clear_cache=True):
+    
+    apply_stealth(page)
+    time.sleep(random.uniform(2.0, 4.0))
     
     if clear_cache:
         try:
@@ -643,8 +673,14 @@ def perform_login(page, max_attempts=3, clear_cache=True):
 
             if email_input is not None:
                 login_stage = "fill_email"
+                time.sleep(random.uniform(0.8, 1.5))
                 email_input.click(timeout=5000)
-                email_input.fill(pick_user_email(), timeout=5000)
+                time.sleep(random.uniform(0.3, 0.7))
+                email_value = pick_user_email()
+                for char in email_value:
+                    email_input.type(char, delay=random.randint(50, 150))
+                    time.sleep(random.uniform(0.01, 0.05))
+                time.sleep(random.uniform(0.5, 1.0))
                 email_scope.locator("button:has-text('Continuar'), button[type='submit']").first.click(timeout=6000)
                 print("Etapa de email detectada e preenchida.")
                 email_step_done = True
@@ -692,14 +728,20 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                 raise RuntimeError("Campo de senha visivel nao encontrado.")
 
             login_stage = "fill_password"
+            time.sleep(random.uniform(1.0, 2.0))
             pwd.click(timeout=5000)
+            time.sleep(random.uniform(0.3, 0.7))
             try:
                 pwd.press("Control+A", timeout=1500)
+                time.sleep(random.uniform(0.1, 0.3))
                 pwd.press("Backspace", timeout=1500)
+                time.sleep(random.uniform(0.2, 0.4))
             except Exception:
                 pass
             try:
-                pwd.type(USER_PASSWORD, delay=random.randint(45, 95), timeout=12000)
+                for char in USER_PASSWORD:
+                    pwd.type(char, delay=random.randint(80, 180))
+                    time.sleep(random.uniform(0.02, 0.08))
             except Exception:
                 pwd.fill(USER_PASSWORD, timeout=5000)
 
@@ -823,7 +865,12 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                     pass
 
                 try:
-                    submit.hover(timeout=2000)
+                    box = submit.bounding_box()
+                    if box:
+                        x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)
+                        y = box["y"] + random.uniform(box["height"] * 0.3, box["height"] * 0.7)
+                        page.mouse.move(x, y, steps=random.randint(8, 15))
+                        time.sleep(random.uniform(0.3, 0.8))
                 except Exception:
                     pass
 

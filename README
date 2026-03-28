@@ -32,4 +32,8 @@ Parar:
 Stop-Job -Name vote_1
 ```
 
+```
+& "scripts\windows\run_vote.ps1" -Instances "1" -NewWindows
+```
+
 Obs.: o comando correto é `scripts\windows\run_vote.ps1` (com `.ps1`, não `.ps`).

@@ -14,6 +14,176 @@ _LAST_CONTEXT = None
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 
+def apply_stealth(page):
+    try:
+        page.add_init_script("""
+            () => {
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['pt-BR', 'pt', 'en-US', 'en']
+                });
+                
+                window.navigator.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+                
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+                
+                Object.defineProperty(navigator, 'hardwareConcurrency', {
+                    get: () => 8
+                });
+                
+                Object.defineProperty(navigator, 'deviceMemory', {
+                    get: () => 8
+                });
+                
+                Object.defineProperty(navigator, 'platform', {
+                    get: () => 'Win32'
+                });
+                
+                Object.defineProperty(navigator, 'vendor', {
+                    get: () => 'Google Inc.'
+                });
+                
+                Object.defineProperty(navigator, 'maxTouchPoints', {
+                    get: () => 0
+                });
+                
+                delete navigator.__proto__.webdriver;
+                
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) {
+                        return 'Intel Inc.';
+                    }
+                    if (parameter === 37446) {
+                        return 'Intel Iris OpenGL Engine';
+                    }
+                    return getParameter.call(this, parameter);
+                };
+                
+                const elementDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+                Object.defineProperty(HTMLDivElement.prototype, 'offsetHeight', {
+                    ...elementDescriptor,
+                    get: function() {
+                        if (this.id === 'modernizr') {
+                            return 1;
+                        }
+                        return elementDescriptor.get.apply(this);
+                    },
+                });
+                
+                const originalToString = Function.prototype.toString;
+                Function.prototype.toString = function() {
+                    if (this === navigator.permissions.query) {
+                        return 'function query() { [native code] }';
+                    }
+                    return originalToString.call(this);
+                };
+                
+                ['height', 'width'].forEach(property => {
+                    const imageDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, property);
+                    Object.defineProperty(HTMLImageElement.prototype, property, {
+                        ...imageDescriptor,
+                        get: function() {
+                            if (this.complete && this.naturalHeight == 0) {
+                                return 20;
+                            }
+                            return imageDescriptor.get.apply(this);
+                        },
+                    });
+                });
+                
+                Object.defineProperty(navigator.connection || {}, 'rtt', {
+                    get: () => 100
+                });
+                
+                if (!window.chrome) {
+                    window.chrome = {};
+                }
+                if (!window.chrome.runtime) {
+                    window.chrome.runtime = {};
+                }
+                
+                const originalAddEventListener = EventTarget.prototype.addEventListener;
+                EventTarget.prototype.addEventListener = function(type, listener, options) {
+                    if (type === 'devtoolschange') {
+                        return;
+                    }
+                    return originalAddEventListener.call(this, type, listener, options);
+                };
+                
+                Object.defineProperty(navigator, 'doNotTrack', {
+                    get: () => null
+                });
+                
+                const mockPluginArray = {
+                    length: 3,
+                    0: {
+                        name: 'Chrome PDF Plugin',
+                        filename: 'internal-pdf-viewer',
+                        description: 'Portable Document Format'
+                    },
+                    1: {
+                        name: 'Chrome PDF Viewer',
+                        filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai',
+                        description: ''
+                    },
+                    2: {
+                        name: 'Native Client',
+                        filename: 'internal-nacl-plugin',
+                        description: ''
+                    }
+                };
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => mockPluginArray
+                });
+            }
+        """)
+        
+        page.add_init_script("""
+            () => {
+                try {
+                    const hiddenDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden') ||
+                                       Object.getOwnPropertyDescriptor(document, 'hidden');
+                    if (hiddenDesc && hiddenDesc.configurable) {
+                        Object.defineProperty(document, 'hidden', {
+                            get: () => false,
+                            configurable: true
+                        });
+                    }
+                } catch (e) {}
+                try {
+                    const visDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState') ||
+                                    Object.getOwnPropertyDescriptor(document, 'visibilityState');
+                    if (visDesc && visDesc.configurable) {
+                        Object.defineProperty(document, 'visibilityState', {
+                            get: () => 'visible',
+                            configurable: true
+                        });
+                    }
+                } catch (e) {}
+            }
+        """)
+    except Exception as e:
+        print(f"Erro ao aplicar stealth scripts: {e}")
+
 def _window_columns(default: int = 3) -> int:
     for name in ("WINDOW_COLUMNS", "WINDOW_COLS", "INSTANCES_TOTAL", "TOTAL_INSTANCES"):
         raw = (os.getenv(name) or "").strip()
@@ -171,20 +341,38 @@ def launch_chrome_debug(user_data_dir, profile_dir=None):
         "--disable-infobars",
         "--disable-notifications",
         "--disable-popup-blocking",
-        "--disable-extensions",
         "--disable-accelerated-2d-canvas",
-        "--disable-gpu",                       # útil quando minimizado
+        "--disable-gpu",
         f"--user-agent={USER_AGENT}",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-web-security",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--allow-running-insecure-content",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-hang-monitor",
+        "--disable-ipc-flooding-protection",
+        "--disable-client-side-phishing-detection",
+        "--disable-default-apps",
+        "--disable-domain-reliability",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-breakpad",
+        "--disable-sync",
         SITE_URL,
     ]
 
-    # Flags mais seguros e que ainda funcionam em 2026
     disable_features = [
         "IsolateOrigins",
-        "site-per-process",          # ou SitePerProcess em algumas versões
+        "site-per-process",
         "ChromeWhatsNewUI",
         "OptimizationGuideModelDownloading",
         "InterestFeedContentSuggestions",
+        "Translate",
+        "AutomationControlled",
     ]
     
     cmd.append(f"--disable-features={','.join(disable_features)}")
@@ -242,9 +430,12 @@ def connect_cdp(playwright):
     browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{DEBUG_PORT}")
     context = browser.contexts[0] if browser.contexts else browser.new_context(
         viewport={"width": 1366, "height": 768},
-        user_agent=USER_AGENT,          # reforço
+        user_agent=USER_AGENT,
         locale="pt-BR",
         timezone_id="America/Sao_Paulo",
+        java_script_enabled=True,
+        bypass_csp=True,
+        ignore_https_errors=True,
     )
     _LAST_BROWSER = browser
     _LAST_CONTEXT = context
