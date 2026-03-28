@@ -1,5 +1,5 @@
 ﻿param(
-  [string]$Instances = "1,2,3,4",
+  [string]$Instances = "1,2,3",
   [switch]$NewWindows
 )
 

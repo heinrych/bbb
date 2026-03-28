@@ -2,6 +2,7 @@
 import random
 import re
 from pathlib import Path
+from datetime import datetime
 
 from .config import *
 from .users import pick_user_email
@@ -682,7 +683,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                     time.sleep(random.uniform(0.01, 0.05))
                 time.sleep(random.uniform(0.5, 1.0))
                 email_scope.locator("button:has-text('Continuar'), button[type='submit']").first.click(timeout=6000)
-                print("Etapa de email detectada e preenchida.")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Etapa de email detectada e preenchida.")
                 email_step_done = True
             else:
                 print("Etapa de email nao apareceu; seguindo direto para senha.")
