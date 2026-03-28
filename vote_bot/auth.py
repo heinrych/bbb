@@ -170,7 +170,7 @@ def clear_hcaptcha_cookies(page):
 
 
 def recreate_page_after_captcha(page, playwright=None):
-    print("Recriando página para evitar lentidão do hCaptcha...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Recriando página para evitar lentidão do hCaptcha...")
 
     for attempt in range(3):
         try:
@@ -343,7 +343,7 @@ def handle_optional_defer_prompt(page, timeout_ms=8000):
                         continue
                     btn.wait_for(state="visible", timeout=900)
                     btn.click(timeout=2000)
-                    print("Opcional detectado: cliquei em 'Prefiro deixar para depois'.")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Opcional detectado: cliquei em 'Prefiro deixar para depois'.")
                     return True
                 except Exception:
                     continue
@@ -355,7 +355,7 @@ def handle_captcha_and_refresh(page, playwright=None):
     try:
         overall_deadline = time.time() + max(10.0, float(HCAPTCHA_STUCK_MAX_S))
         if is_hcaptcha_challenge_visible(page):
-            print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
             raise RestartInitialFlow("hCaptcha challenge visível")
 
         found_votar_novamente = False
@@ -404,7 +404,7 @@ def handle_captcha_and_refresh(page, playwright=None):
                 cb = frame.locator("div[role='checkbox']").first
 
                 if cb.count() > 0:
-                    print("hCaptcha detectado. Clicando para abrir...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] hCaptcha detectado. Clicando para abrir...")
                     cb.wait_for(state="visible", timeout=5000)
                     cb.scroll_into_view_if_needed()
                     time.sleep(random.uniform(2.5, 5))
@@ -415,7 +415,7 @@ def handle_captcha_and_refresh(page, playwright=None):
                     deadline = time.time() + 4.0
                     while time.time() < deadline:
                         if is_hcaptcha_challenge_visible(page):
-                            print("Desafio do hCaptcha abriu. Voltando ao fluxo inicial...")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Desafio do hCaptcha abriu. Voltando ao fluxo inicial...")
                             raise RestartInitialFlow("hCaptcha challenge abriu após click")
                         time.sleep(0.25)
                     break
@@ -425,15 +425,15 @@ def handle_captcha_and_refresh(page, playwright=None):
                 # iframe/elemento pode ainda não estar pronto; tenta novamente
                 pass
             
-            print(f"Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar hCaptcha...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentativa ({i+1}/{VOTAR_NOVAMENTE_RETRY}) para detectar hCaptcha...")
             time.sleep(random.uniform(2,4))
             
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
-                print("hCaptcha não detectado após várias tentativas. Reiniciando fluxo inicial...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] hCaptcha não detectado após várias tentativas. Reiniciando fluxo inicial...")
                 raise RestartInitialFlow("hCaptcha não detectado após várias tentativas")
 
         if not captcha_clicked:
-            print("Não consegui clicar no hCaptcha. Reiniciando fluxo inicial...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Não consegui clicar no hCaptcha. Reiniciando fluxo inicial...")
             raise RestartInitialFlow("hCaptcha não foi clicado")
      
         for i in range(VOTAR_NOVAMENTE_RETRY):
@@ -444,7 +444,7 @@ def handle_captcha_and_refresh(page, playwright=None):
                 raise RestartInitialFlow("hCaptcha carregando por muito tempo (apos click)")
 
             if is_hcaptcha_challenge_visible(page):
-                print("Janela do desafio do hCaptcha detectada durante espera. Voltando ao fluxo inicial...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Janela do desafio do hCaptcha detectada durante espera. Voltando ao fluxo inicial...")
                 raise RestartInitialFlow("hCaptcha challenge visível durante espera")
 
             # Se não abriu janela de desafio, aguardar um pouco para o fluxo "invisible" completar.
@@ -452,26 +452,26 @@ def handle_captcha_and_refresh(page, playwright=None):
             start = time.time()
             while time.time() - start < wait_s:
                 if is_hcaptcha_challenge_visible(page):
-                    print("Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
                     raise RestartInitialFlow("hCaptcha challenge visível durante espera curta")
                 time.sleep(0.5)
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
                 if detect_votar_novamente_button():
-                    print("Botão 'Votar Novamente' detectado!")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Botão 'Votar Novamente' detectado!")
                     found_votar_novamente = True
                     break
 
                 # verifica se apareceu a tela de voto confirmado
                 if page.locator("text=Seu voto").count() > 0:
-                    print("Página de confirmação detectada!")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Página de confirmação detectada!")
 
                     # às vezes o botão aparece logo após a confirmação; dá uma pequena janela pra ele renderizar
                     deadline = time.time() + 4.0
                     while time.time() < deadline and not found_votar_novamente:
                         if detect_votar_novamente_button():
-                            print("Botão 'Votar Novamente' detectado!")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Botão 'Votar Novamente' detectado!")
                             found_votar_novamente = True
                             break
                         time.sleep(0.25)
@@ -481,19 +481,19 @@ def handle_captcha_and_refresh(page, playwright=None):
                     if i + 1 < VOTAR_NOVAMENTE_RETRY:
                         continue
 
-                print("hCaptcha ainda parece presente...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] hCaptcha ainda parece presente...")
 
             except Exception as e:
-                print("Erro ao verificar página:", e)
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro ao verificar página:", e)
 
             if i + 1 >= VOTAR_NOVAMENTE_RETRY:
-                raise Exception("Captcha ainda presente após várias tentativas.")
+                raise Exception(f"[{datetime.now().strftime('%H:%M:%S')}] Captcha ainda presente após várias tentativas.")
         
         if found_votar_novamente:
             total_interacoes = incrementar_contador(COUNTER_FILE)
-            print(f"Contador salvo em {COUNTER_FILE}: {total_interacoes}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Contador salvo em {COUNTER_FILE}: {total_interacoes}")
         else:
-            print("Botão 'Votar Novamente' não foi detectado; contador não foi incrementado.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Botão 'Votar Novamente' não foi detectado; contador não foi incrementado.")
                           
         # Após resolver, recria a página para evitar lentidão
         return recreate_page_after_captcha(page, playwright)
@@ -501,7 +501,7 @@ def handle_captcha_and_refresh(page, playwright=None):
     except RestartInitialFlow:
         raise
     except Exception as e:
-        print(f"Sem hCaptcha visível ou erro: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sem hCaptcha visível ou erro: {e}")
         
         # Fallback para o método antigo (manter compatibilidade)
         try:
@@ -516,7 +516,7 @@ def handle_captcha_and_refresh(page, playwright=None):
                         }
                     }
                 """)
-                print("Cliquei no hCaptcha via evaluate (fallback). Aguardando resolução...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Cliquei no hCaptcha via evaluate (fallback). Aguardando resolução...")
                 time.sleep(20)
 
                 # Recria a página
@@ -535,9 +535,9 @@ def perform_login(page, max_attempts=3, clear_cache=True):
     if clear_cache:
         try:
             clear_browser_state(page)
-            print("Cache/cookies limpos antes do perform_login.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Cache/cookies limpos antes do perform_login.")
         except Exception as e:
-            print(f"Falha ao limpar cache antes do perform_login: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Falha ao limpar cache antes do perform_login: {e}")
 
     for attempt in range(max_attempts):
         login_stage = "inicio"
@@ -585,14 +585,14 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                         btn.click(timeout=5000)
                         
                         if has_entrar(page):
-                            print("Menu exibiu 'Minha conta': sessao ja ativa.")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Menu exibiu 'Minha conta': sessao ja ativa.")
                             return True
                         clicked_login = True
                         break
                     except Exception:
                         continue
                 if not clicked_login:
-                    print("Botao 'Entrar com Conta Globo' nao encontrado; tentando abrir login pelo site.")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Botao 'Entrar com Conta Globo' nao encontrado; tentando abrir login pelo site.")
                     page = goto_login_from_site(page)
 
             login_stage = "wait_login_context"
@@ -633,16 +633,16 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                     if not clicked:
                         if has_entrar(page):
                             handle_optional_defer_prompt(page, timeout_ms=7000)
-                            print("Botao primario 'Entrar' nao encontrado; sessao ja autenticada (Minha conta visivel).")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Botao primario 'Entrar' nao encontrado; sessao ja autenticada (Minha conta visivel).")
                             return True
 
                         href_now = (page.url or "").lower()
                         if "authx.globoid.globo.com" not in href_now and "goidc.globo.com" not in href_now:
                             handle_optional_defer_prompt(page, timeout_ms=7000)
-                            print("Botao primario 'Entrar' nao encontrado/clicavel; fora do auth, assumindo login ativo.")
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Botao primario 'Entrar' nao encontrado/clicavel; fora do auth, assumindo login ativo.")
                             return True
 
-                        print("Botao primario 'Entrar' nao encontrado/clicavel; tentando seguir para o campo de email.")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Botao primario 'Entrar' nao encontrado/clicavel; tentando seguir para o campo de email.")
 
             email_step_done = False
             email_input = None
@@ -686,7 +686,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Etapa de email detectada e preenchida.")
                 email_step_done = True
             else:
-                print("Etapa de email nao apareceu; seguindo direto para senha.")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Etapa de email nao apareceu; seguindo direto para senha.")
 
             pwd = None
             pwd_scope = page
@@ -726,7 +726,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                     time.sleep(0.3)
 
             if pwd is None:
-                raise RuntimeError("Campo de senha visivel nao encontrado.")
+                raise RuntimeError(f"[{datetime.now().strftime('%H:%M:%S')}] Campo de senha visivel nao encontrado.")
 
             login_stage = "fill_password"
             time.sleep(random.uniform(1.0, 2.0))
@@ -956,30 +956,30 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                 )
 
             if not email_step_done:
-                print("Senha preenchida sem etapa de email; confirmei 'Entrar' antes do redirecionamento.")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Senha preenchida sem etapa de email; confirmei 'Entrar' antes do redirecionamento.")
 
             # AGORA sim, após o login ser submetido, verificamos se apareceu a tela "Prefiro deixar para depois"
             # e clicamos nela para FINALIZAR o login
             handle_optional_defer_prompt(page, timeout_ms=9000)
 
             # Verifica se está logado ANTES de voltar para a página principal
-            print("Verificando se login foi bem-sucedido...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Verificando se login foi bem-sucedido...")
             
             # Aguarda um pouco para os cookies serem estabelecidos
             time.sleep(3)
             
             # Tenta verificar se já está logado pelo menu "Minha conta"
             if has_entrar(page):
-                print("Menu 'Minha conta' visível - login confirmado!")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Menu 'Minha conta' visível - login confirmado!")
             else:
                 # Se não encontrar, tenta dar um refresh na página atual primeiro
                 try:
                     page.reload(timeout=30000)
                     time.sleep(2)
                     if has_entrar(page):
-                        print("Login confirmado após refresh!")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Login confirmado após refresh!")
                     else:
-                        print("Menu 'Minha conta' ainda não visível, mas continuando...")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Menu 'Minha conta' ainda não visível, mas continuando...")
                         return False
                 except:
                     pass
@@ -988,7 +988,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
             return True
             
         except Exception as e:
-            print(f"Tentativa {attempt+1}/{max_attempts} de login falhou em '{login_stage}': {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentativa {attempt+1}/{max_attempts} de login falhou em '{login_stage}': {e}")
             if attempt < max_attempts - 1:
                 wait_time = random.uniform(2, 4)
                 print(f"Aguardando {wait_time:.1f}s antes de tentar novamente...")
@@ -1003,9 +1003,9 @@ def perform_login_legacy(page, max_attempts=2, clear_cache=True):
     if clear_cache:
         try:
             clear_browser_state(page)
-            print("Cache/cookies limpos antes do perform_login_legacy.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Cache/cookies limpos antes do perform_login_legacy.")
         except Exception as e:
-            print(f"Falha ao limpar cache antes do perform_login_legacy: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Falha ao limpar cache antes do perform_login_legacy: {e}")
 
     for attempt in range(max_attempts):
         try:
@@ -1045,10 +1045,10 @@ def perform_login_legacy(page, max_attempts=2, clear_cache=True):
                 timeout=20000,
             )
             handle_optional_defer_prompt(page, timeout_ms=9000)
-            print("Login legacy preenchido automaticamente.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Login legacy preenchido automaticamente.")
             return True
         except Exception as e:
-            print(f"Tentativa legacy {attempt + 1}/{max_attempts} falhou: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentativa legacy {attempt + 1}/{max_attempts} falhou: {e}")
             if attempt < max_attempts - 1:
                 time.sleep(random.uniform(1.5, 3.0))
     return False
@@ -1070,9 +1070,9 @@ def ensure_authenticated(page):
     if not must_login:
         return page
 
-    print("Autenticacao inicial detectada. Executando login antes do loop...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Autenticacao inicial detectada. Executando login antes do loop...")
     if not perform_login(page):
-        print("Login principal falhou na autenticacao inicial. Tentando fallback legacy...")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Login principal falhou na autenticacao inicial. Tentando fallback legacy...")
         if not perform_login_legacy(page):
             raise RuntimeError("Falha na autenticacao inicial.")
     return safe_goto(page, SITE_URL)
@@ -1080,7 +1080,7 @@ def ensure_authenticated(page):
 
 def clean_cache_and_login(page):
     """Limpando cache e recriando página para evitar lentidão do captcha"""
-    print("Limpando cache/contexto...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Limpando cache/contexto...")
 
     # Salva o contexto antes de fechar a página
     context = page.context
@@ -1088,7 +1088,7 @@ def clean_cache_and_login(page):
         if hasattr(context, "is_closed") and context.is_closed():
             raise RuntimeError("Contexto fechado antes da limpeza.")
     except Exception as e:
-        print(f"Contexto inválido: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Contexto inválido: {e}")
         return page
 
     try:
@@ -1104,7 +1104,7 @@ def clean_cache_and_login(page):
     try:
         page = context.new_page()
     except Exception as e:
-        print(f"Nao consegui abrir nova pagina no contexto: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Nao consegui abrir nova pagina no contexto: {e}")
         return page
     close_other_pages(context, page)
     minimize_window(page)
@@ -1113,7 +1113,7 @@ def clean_cache_and_login(page):
         # Limpa o estado do navegador
         clear_browser_state(page)
     except Exception as e:
-        print(f"Falha ao limpar cache: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Falha ao limpar cache: {e}")
 
     # Força uma nova sessão
     try:
@@ -1127,12 +1127,12 @@ def clean_cache_and_login(page):
             if "not-found" in page.url.lower():
                 page = safe_goto(page, SITE_URL)
             if not perform_login(page):
-                print("perform_login falhou apos limpar cache. Tentando fallback legacy...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] perform_login falhou apos limpar cache. Tentando fallback legacy...")
                 if not perform_login_legacy(page):
                     raise RuntimeError("perform_login e fallback legacy falharam apos limpar cache.")
             return page
         except Exception as e:
-            print(f"Nao consegui executar login automatico apos limpar cache (tentativa {i + 1}/2): {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Nao consegui executar login automatico apos limpar cache (tentativa {i + 1}/2): {e}")
             # Se falhar, cria outra página nova
             page = context.new_page()
 

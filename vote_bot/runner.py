@@ -1,6 +1,7 @@
 ﻿import time
 import random
 import os
+from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -36,11 +37,12 @@ def main():
     print(f"Usando user-data-dir: {MAIN_USER_DATA_DIR}")
     print(f"Usando profile-directory: {profile_to_use}")
     print(f"BRING_TO_FRONT={BRING_TO_FRONT} (env={os.getenv('BRING_TO_FRONT')!r})")
+    print(f"Max Interaction = {MAX_INTERATIONS_NOW}")
 
     if not ensure_devtools_or_launch(profile_to_use, timeout=20):
         for tentativa in range(1, 4):
             try:
-                print(f"DevTools nao encontrado em 127.0.0.1:{DEBUG_PORT}. Tentativa {tentativa}/3...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] DevTools nao encontrado em 127.0.0.1:{DEBUG_PORT}. Tentativa {tentativa}/3...")
                 if KILL_CHROME_ON_RETRY:
                     close_all_chrome()
                     time.sleep(1.5)
@@ -48,9 +50,9 @@ def main():
                 if wait_devtools(DEBUG_PORT, timeout=20):
                     print("DevTools ativo. Conectando via Playwright...")
                     break
-                print("Chrome abriu, mas sem endpoint DevTools na porta esperada.")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Chrome abriu, mas sem endpoint DevTools na porta esperada.")
             except Exception as e:
-                print(f"Erro ao tentar abrir o Chrome: {e}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro ao tentar abrir o Chrome: {e}")
                 time.sleep(2)
         else:
             raise RuntimeError(
@@ -85,13 +87,13 @@ def main():
             arrange_window(page)
         else:
             minimize_window(page)
-        print("URL atual:", page.url)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] URL atual:", page.url)
 
-        print("Abrindo pagina...")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Abrindo pagina...")
         try:
             page = safe_goto(page, SITE_URL)
         except Exception as e:
-            print(f"Erro ao navegar: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}]Erro ao navegar: {e}")
             time.sleep(random.uniform(10, 30))
             raise
 
@@ -105,13 +107,13 @@ def main():
                 # preenchê-la automaticamente antes de prosseguir
                 page = ensure_page_alive(page, p)
                 if is_hcaptcha_challenge_visible(page):
-                    print("Janela do desafio do hCaptcha detectada. Reiniciando fluxo inicial...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Janela do desafio do hCaptcha detectada. Reiniciando fluxo inicial...")
                     page = recreate_page_after_captcha(page, p)
                     #setup_network_logging(page)
                     page = ensure_authenticated(page)
                     continue
                 if "authx.globoid.globo.com" in page.url or page.locator("input[name=email]").count() > 0:
-                    print("Tela de login detectada, preenchendo credenciais...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Tela de login detectada, preenchendo credenciais...")
                     page = clean_cache_and_login(page)
                     if page is None or page.is_closed():
                         raise RuntimeError("Falha no login: pagina fechada/invalidada durante clean_cache_and_login.")
@@ -119,15 +121,15 @@ def main():
                     try:
                         page = safe_goto(page, SITE_URL)
                     except Exception as e:
-                        print(f"Erro ao retornar ao site após login: {e}")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro ao retornar ao site após login: {e}")
                         # continuar mesmo assim
-                print("Pagina carregada.")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Pagina carregada.")
 
                 # pequeno atraso randômico antes de interagir para simular comportamento humano
                 time.sleep(random.uniform(1.2, 3.5))
-                print(f"Clicando no candidato: {CANDIDATO}...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Clicando no candidato: {CANDIDATO}...")
                 if not click_candidato(page, CANDIDATO):
-                    print("Aviso: nao consegui clicar no candidato (nenhum seletor funcionou).")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Aviso: nao consegui clicar no candidato (nenhum seletor funcionou).")
 
                 # screenshot_path = ARTIFACTS_DIR / "01_card_selecionado.png"
                 # page.screenshot(path=str(screenshot_path), full_page=True)
@@ -137,25 +139,25 @@ def main():
                 try:
                     page = handle_captcha_and_refresh(page, p)
                 except RestartInitialFlow as restart_err:
-                    print(f"{restart_err}. Reiniciando fluxo inicial...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] {restart_err}. Reiniciando fluxo inicial...")
                     page = ensure_page_alive(page, p)
                     page = recreate_page_after_captcha(page, p)
                     #setup_network_logging(page)
                     page = ensure_authenticated(page)
                     continue
                 try:
-                    print(f"Estado apos captcha. URL atual: {page.url}")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Estado apos captcha. URL atual: {page.url}")
                 except Exception:
                     pass
 
                 wait_after_captcha = random.uniform(3, 6)
-                print(f"Pos-captcha: aguardando {wait_after_captcha:.1f}s...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Pos-captcha: aguardando {wait_after_captcha:.1f}s...")
                 time.sleep(wait_after_captcha)
                 total_interacoes = interacao_atual()
                 # a cada 3 interações recria a página para evitar acúmulo de estado
                 if total_interacoes % MAX_INTERATIONS_NOW == 0:
                     os.system("cls" if os.name == "nt" else "clear")
-                    print("Recriando página para evitar acúmulo de estado...")
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Recriando página para evitar acúmulo de estado...")
                     page = ensure_page_alive(page, p)
                     context = page.context
                     new_page = context.new_page()
@@ -168,13 +170,13 @@ def main():
 
                 # pequena espera randômica antes da proxima iteracao
                 wait_next_iter = random.uniform(2.5, 6.5)
-                print(f"Aguardando {wait_next_iter:.1f}s antes da proxima iteracao...")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Aguardando {wait_next_iter:.1f}s antes da proxima iteracao...")
                 time.sleep(wait_next_iter)
 
             except KeyboardInterrupt:
                 raise
             except Exception as loop_err:
-                print(f"Erro no loop principal, recuperando pagina: {loop_err}")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro no loop principal, recuperando pagina: {loop_err}")
                 try:
                     page = ensure_page_alive(page, p)
                     page = safe_goto(page, SITE_URL)
@@ -197,13 +199,13 @@ def run_forever():
             # se main retornar sem excecao, resetar contador de falhas
             failure_count = 0
         except KeyboardInterrupt:
-            print("Execucao interrompida pelo usuario.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Execucao interrompida pelo usuario.")
             break
         except Exception as e:
             failure_count += 1
-            print(f"Erro inesperado: {e}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro inesperado: {e}")
             wait = min(60, 5 * (2 ** (failure_count - 1))) + random.uniform(0, 3)
             print(
-                f"Reiniciando o processo... (falhas consecutivas: {failure_count}). Aguardando {wait:.1f}s antes de tentar novamente.")
+                f"[{datetime.now().strftime('%H:%M:%S')}] Reiniciando o processo... (falhas consecutivas: {failure_count}). Aguardando {wait:.1f}s antes de tentar novamente.")
             time.sleep(wait)
             continue
