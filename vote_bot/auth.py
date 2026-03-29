@@ -12,6 +12,7 @@ from .browser import (
     ensure_page_alive,
     safe_goto,
     minimize_window,
+    arrange_window,
     safe_close_page,
     close_other_pages,
     apply_stealth,
@@ -106,38 +107,31 @@ def has_entrar(page):
 
 
 def clear_page_cache(page):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR PAGE CACHE")
     try:
         if page.is_closed():
             return
     except Exception:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR PAGE CACHE - PAGE IS  CLOSED")
         return
-
+    
     try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR PAGE CACHE - PAGE EVALUATE")
         page.evaluate(
-            """async () => {
+            """() => {
                 try { localStorage.clear(); } catch (e) {}
                 try { sessionStorage.clear(); } catch (e) {}
-                try {
-                    if (globalThis.caches && caches.keys) {
-                        const keys = await caches.keys();
-                        await Promise.all(keys.map(k => caches.delete(k)));
-                    }
-                } catch (e) {}
-                try {
-                    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-                        const regs = await navigator.serviceWorker.getRegistrations();
-                        await Promise.all(regs.map(r => r.unregister()));
-                    }
-                } catch (e) {}
             }"""
         )
     except Exception as e:
-        print(f"Erro ao limpar storage/cache da página: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro ao limpar storage/cache da página: {e}")
 
     try:
-        page.context.clear_cookies()
-    except Exception as e:
-        print(f"Erro ao limpar cookies do contexto: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR PAGE CACHE - CLEAN COOKIES")
+        page.context.clear_cookies(domain=".hcaptcha.com")
+        page.context.clear_cookies(domain=".cloudflare.com")
+    except Exception:
+        pass
 
 
 def clear_hcaptcha_cookies(page):
@@ -164,9 +158,9 @@ def clear_hcaptcha_cookies(page):
         if filtered:
             page.context.add_cookies(filtered)
 
-        print(f"Cookies de captcha limpos. Mantidos: {len(filtered)}/{len(cookies)}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Cookies de captcha limpos. Mantidos: {len(filtered)}/{len(cookies)}")
     except Exception as e:
-        print(f"Erro ao limpar cookies do hCaptcha: {e}")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}]  Erro ao limpar cookies do hCaptcha: {e}")
 
 
 def recreate_page_after_captcha(page, playwright=None):
@@ -248,15 +242,17 @@ def clear_browser_state(page):
             return
     except Exception:
         return
-
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR BROSWER STATE")
     clear_page_cache(page)
 
     session = None
     try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR BROSER STATE - CLEAN CONTEXT")
         session = page.context.new_cdp_session(page)
         session.send("Network.enable")
         session.send("Network.clearBrowserCache")
         session.send("Network.clearBrowserCookies")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR BROSER STATE - CLEAN CONTEXT OK")
     except Exception as e:
         print(f"Nao consegui limpar cache/cookies via CDP: {e}")
     finally:
@@ -266,26 +262,7 @@ def clear_browser_state(page):
         except Exception:
             pass
 
-    session = None
-    try:
-        session = page.context.new_cdp_session(page)
-        current_url = page.url or ""
-        if current_url and current_url != "about:blank":
-            from urllib.parse import urlparse
-            parsed = urlparse(current_url)
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            session.send("Storage.clearDataForOrigin", {
-                "origin": origin,
-                "storageTypes": "all",
-            })
-    except Exception:
-        pass
-    finally:
-        try:
-            if session is not None:
-                session.detach()
-        except Exception:
-            pass
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] CLEAR BROSWER STATE FINALY")
 
 
 def goto_login_from_site(page):
@@ -301,6 +278,21 @@ def goto_login_from_site(page):
         "button:has-text('Entrar')",
         "a:has-text('Entrar')",
     ]
+
+    hover_candidates = [
+        "div.codex-login",
+        "li.codex-header__item--login",
+        "[class*='login']",
+        "header",
+    ]
+    for hover_sel in hover_candidates:
+        try:
+            el = page.locator(hover_sel).first
+            if el.count() > 0:
+                el.hover(timeout=2000)
+                break
+        except Exception:
+            continue
 
     for sel in login_selectors:
         try:
@@ -542,13 +534,19 @@ def handle_captcha_and_refresh(page, playwright=None):
 
 
 def perform_login(page, max_attempts=3, clear_cache=True):
-    
+    url_lower = (page.url or "").lower()
+    on_auth_page = "authx.globoid.globo.com" in url_lower or "goidc.globo.com" in url_lower
+
+    if not on_auth_page and has_entrar(page):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Ja autenticado, ignorando perform_login.")
+        return True
+
     apply_stealth(page)
     time.sleep(random.uniform(2.0, 4.0))
     
     if clear_cache:
         try:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Iniciando limpesa de estado")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Iniciando limpeza de estado")
             clear_browser_state(page)
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Cache/cookies limpos antes do perform_login.")
         except Exception as e:
@@ -589,6 +587,22 @@ def perform_login(page, max_attempts=3, clear_cache=True):
             ):
                 login_stage = "click_entrar_com_conta_globo"
                 clicked_login = False
+
+                hover_candidates = [
+                    "div.codex-login",
+                    "li.codex-header__item--login",
+                    "[class*='login']",
+                    "header",
+                ]
+                for hover_sel in hover_candidates:
+                    try:
+                        el = page.locator(hover_sel).first
+                        if el.count() > 0:
+                            el.hover(timeout=2000)
+                            break
+                    except Exception:
+                        continue
+
                 login_candidates = [
                     "button.codex-login__button:has(span.codex-login__button-label:has-text('Entrar com Conta Globo'))",
                     "button.codex-login__button:has-text('Entrar com Conta Globo')",
@@ -599,7 +613,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                         btn = page.locator(sel).first
                         btn.wait_for(state="visible", timeout=5000)
                         btn.click(timeout=5000)
-                        
+
                         if has_entrar(page):
                             print(f"[{datetime.now().strftime('%H:%M:%S')}] Menu exibiu 'Minha conta': sessao ja ativa.")
                             return True
@@ -840,131 +854,177 @@ def perform_login(page, max_attempts=3, clear_cache=True):
                 "button[type='submit']:has-text('Entrar')",
             ]
 
+            got_403 = [False]
+
+            def _on_response_403(response):
+                try:
+                    if "authx-api.globoid.globo.com" in response.url and response.status == 403:
+                        got_403[0] = True
+                except Exception:
+                    pass
+
+            try:
+                page.on("response", _on_response_403)
+            except Exception:
+                pass
+
             login_submitted = False
             clicked_at_least_once = False
             login_stage = "click_submit_entrar"
-            for submit_try in range(6):
-                submit = None
-                submit_scope = None
-                for scope in [pwd_scope, page] + list(page.frames):
-                    if submit is not None:
-                        break
-                    for sel in submit_selectors:
-                        try:
-                            btn = scope.locator(sel).first
-                            btn.wait_for(state="visible", timeout=1500)
-                            submit = btn
-                            submit_scope = scope
+            try:
+                for submit_try in range(6):
+                    submit = None
+                    submit_scope = None
+                    for scope in [pwd_scope, page] + list(page.frames):
+                        if submit is not None:
                             break
-                        except Exception:
-                            continue
+                        for sel in submit_selectors:
+                            try:
+                                btn = scope.locator(sel).first
+                                btn.wait_for(state="visible", timeout=1500)
+                                submit = btn
+                                submit_scope = scope
+                                break
+                            except Exception:
+                                continue
 
-                if submit is None:
-                    time.sleep(0.5)
-                    continue
+                    if submit is None:
+                        time.sleep(0.5)
+                        continue
 
-                try:
-                    page.wait_for_function(
-                        """(el) => {
-                            if (!el) return false;
-                            const aria = (el.getAttribute("aria-disabled") || "").toLowerCase();
-                            return !el.disabled && aria !== "true";
-                        }""",
-                        arg=submit.element_handle(),
-                        timeout=3000,
-                    )
-                except Exception:
-                    pass
+                    try:
+                        page.wait_for_function(
+                            """(el) => {
+                                if (!el) return false;
+                                const aria = (el.getAttribute("aria-disabled") || "").toLowerCase();
+                                return !el.disabled && aria !== "true";
+                            }""",
+                            arg=submit.element_handle(),
+                            timeout=3000,
+                        )
+                    except Exception:
+                        pass
 
-                try:
-                    submit.scroll_into_view_if_needed(timeout=1500)
-                except Exception:
-                    pass
+                    try:
+                        submit.scroll_into_view_if_needed(timeout=1500)
+                    except Exception:
+                        pass
 
-                try:
-                    box = submit.bounding_box()
-                    if box:
-                        x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)
-                        y = box["y"] + random.uniform(box["height"] * 0.3, box["height"] * 0.7)
-                        page.mouse.move(x, y, steps=random.randint(8, 15))
-                        time.sleep(random.uniform(0.3, 0.8))
-                except Exception:
-                    pass
-
-                try:
-                    submit.click(timeout=4000)
-                    clicked_at_least_once = True
-                except Exception:
                     try:
                         box = submit.bounding_box()
                         if box:
-                            x = box["x"] + (box["width"] / 2)
-                            y = box["y"] + (box["height"] / 2)
-                            page.mouse.move(x, y, steps=random.randint(6, 14))
-                            page.mouse.down()
-                            time.sleep(random.uniform(0.03, 0.12))
-                            page.mouse.up()
+                            x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)
+                            y = box["y"] + random.uniform(box["height"] * 0.3, box["height"] * 0.7)
+                            page.mouse.move(x, y, steps=random.randint(8, 15))
+                            time.sleep(random.uniform(0.3, 0.8))
+                    except Exception:
+                        pass
+
+                    try:
+                        submit.click(timeout=4000)
+                        clicked_at_least_once = True
+                    except Exception:
+                        try:
+                            box = submit.bounding_box()
+                            if box:
+                                x = box["x"] + (box["width"] / 2)
+                                y = box["y"] + (box["height"] / 2)
+                                page.mouse.move(x, y, steps=random.randint(6, 14))
+                                page.mouse.down()
+                                time.sleep(random.uniform(0.03, 0.12))
+                                page.mouse.up()
+                                clicked_at_least_once = True
+                        except Exception:
+                            pass
+
+                    if has_auth_error():
+                        raise RuntimeError("Login recusado pela pagina (senha/credencial invalida ou validacao bloqueada).")
+
+                    try:
+                        if not clicked_at_least_once:
+                            submit.click(timeout=4000, force=True)
                             clicked_at_least_once = True
                     except Exception:
                         pass
 
-                if has_auth_error():
-                    raise RuntimeError("Login recusado pela pagina (senha/credencial invalida ou validacao bloqueada).")
+                    for _ in range(12):
+                        if login_effect_observed():
+                            login_submitted = True
+                            break
+                        if is_hcaptcha_challenge_visible(page):
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Captcha detectado durante login. Reiniciando tentativa...")
+                            page = hard_reset_browser(page)
+                            raise RestartInitialFlow("Captcha apareceu durante login")
+                        if got_403[0]:
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 403 recebido do authx. Executando hard reset...")
+                            got_403[0] = False
+                            page = hard_reset_browser(page)
+                            raise RestartInitialFlow("403 Forbidden durante login")
+                        time.sleep(0.25)
+                    if login_submitted:
+                        break
 
-                try:
-                    if not clicked_at_least_once:
-                        submit.click(timeout=4000, force=True)
+                    try:
+                        pwd.press("Enter", timeout=2000)
                         clicked_at_least_once = True
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
 
-                for _ in range(12):
-                    if login_effect_observed():
-                        login_submitted = True
+                    for _ in range(10):
+                        if login_effect_observed():
+                            login_submitted = True
+                            break
+                        if is_hcaptcha_challenge_visible(page):
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Captcha detectado durante login. Reiniciando tentativa...")
+                            raise RestartInitialFlow("Captcha apareceu durante login")
+                        if got_403[0]:
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 403 recebido do authx. Executando hard reset...")
+                            got_403[0] = False
+                            page = hard_reset_browser(page)
+                            raise RestartInitialFlow("403 Forbidden durante login")
+                        time.sleep(0.25)
+                    if login_submitted:
                         break
-                    time.sleep(0.25)
-                if login_submitted:
-                    break
 
-                try:
-                    pwd.press("Enter", timeout=2000)
-                    clicked_at_least_once = True
-                except Exception:
-                    pass
-
-                for _ in range(10):
-                    if login_effect_observed():
-                        login_submitted = True
-                        break
-                    time.sleep(0.25)
-                if login_submitted:
-                    break
-
-                try:
-                    clicked_js = bool(
-                        submit_scope.evaluate(
-                            """() => {
-                                const btn = document.querySelector("button[type='submit'][aria-disabled='false'], button[type='submit']");
-                                if (!btn) return false;
-                                btn.click();
-                                return true;
-                            }"""
+                    try:
+                        clicked_js = bool(
+                            submit_scope.evaluate(
+                                """() => {
+                                    const btn = document.querySelector("button[type='submit'][aria-disabled='false'], button[type='submit']");
+                                    if (!btn) return false;
+                                    btn.click();
+                                    return true;
+                                }"""
+                            )
                         )
-                    )
-                    if clicked_js:
-                        clicked_at_least_once = True
+                        if clicked_js:
+                            clicked_at_least_once = True
+                    except Exception:
+                        pass
+
+                    for _ in range(10):
+                        if login_effect_observed():
+                            login_submitted = True
+                            break
+                        if is_hcaptcha_challenge_visible(page):
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Captcha detectado durante login. Reiniciando tentativa...")
+                            raise RestartInitialFlow("Captcha apareceu durante login")
+                        if got_403[0]:
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 403 recebido do authx. Executando hard reset...")
+                            got_403[0] = False
+                            page = hard_reset_browser(page)
+                            raise RestartInitialFlow("403 Forbidden durante login")
+                        time.sleep(0.25)
+                    if has_auth_error():
+                        raise RuntimeError("Login recusado pela pagina apos submit.")
+                    if login_submitted:
+                        break
+
+            finally:
+                try:
+                    page.remove_listener("response", _on_response_403)
                 except Exception:
                     pass
-
-                for _ in range(10):
-                    if login_effect_observed():
-                        login_submitted = True
-                        break
-                    time.sleep(0.25)
-                if has_auth_error():
-                    raise RuntimeError("Login recusado pela pagina apos submit.")
-                if login_submitted:
-                    break
 
             if not login_submitted:
                 raise RuntimeError(
@@ -1062,14 +1122,26 @@ def perform_login_legacy(page, max_attempts=2, clear_cache=True):
 
 def ensure_authenticated(page):
     """Garante autenticacao no inicio do fluxo, antes do loop principal."""
+    for hover_sel in ["div.codex-login", "li.codex-header__item--login", "[class*='login']", "header"]:
+        try:
+            el = page.locator(hover_sel).first
+            if el.count() > 0:
+                el.hover(timeout=2000)
+                break
+        except Exception:
+            continue
+
     try:
+        url_lower = page.url.lower()
+        on_auth_page = "authx.globoid.globo.com" in url_lower or "goidc.globo.com" in url_lower
         must_login = (
-                "authx.globoid.globo.com" in page.url.lower()
+                on_auth_page
                 or page.locator("input[name='email']").count() > 0
-                or page.locator("button:has-text('Entrar com Conta Globo')").count() > 0
+                or page.locator("button:has-text('Entrar com Conta Globo'):visible").count() > 0
         )
-        if has_entrar(page):
+        if not on_auth_page and has_entrar(page):
             must_login = False
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ensure_authenticated: must_login={must_login}")
     except Exception:
         must_login = True
 
@@ -1147,17 +1219,23 @@ def clean_cache_and_login(page):
 
 def hard_reset_browser(page):
     """Reset mais agressivo - recria contexto inteiro"""
-    browser = page.context.browser
-    context = page.context
+    old_context = page.context
+    browser = old_context.browser
 
-    # Cria novo contexto
     new_context = browser.new_context()
-
-    # Limpa tudo
     new_context.clear_cookies()
 
-    # Cria nova página
     new_page = new_context.new_page()
+    apply_stealth(new_page)
+    if BRING_TO_FRONT:
+        arrange_window(new_page)
+    else:
+        minimize_window(new_page)
     new_page = safe_goto(new_page, SITE_URL)
+
+    try:
+        old_context.close()
+    except Exception:
+        pass
 
     return new_page
