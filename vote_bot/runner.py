@@ -130,45 +130,18 @@ def main():
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Clicando no candidato: {CANDIDATO}...")
                 if not click_candidato(page, CANDIDATO):
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Aviso: nao consegui clicar no candidato (nenhum seletor funcionou).")
-
-                current_url = (page.url or "").lower()
-                on_auth_domain = ("authx.globoid.globo.com" in current_url) or ("goidc.globo.com" in current_url)
-                has_login_form = (
-                    page.locator("input[name='email'], input[type='email'], input[name='login']").count() > 0
-                    or page.locator("input[name='password'], input[type='password']").count() > 0
-                )
-                # Só tenta login se estiver no auth E o formulário estiver visível (evita redirect intermediário)
-                if on_auth_domain and has_login_form:
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Redirecionado para login após clicar no card. Executando login...")
-                    
-                    # Pequeno delay para dar tempo do backend processar o clique anterior
-                    time.sleep(random.uniform(1.5, 3.5))
-
-                    # Evita loop de login/403 por tentativas em sequência
-                    now = time.time()
-                    if now - last_login_attempt_ts < 60:
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Login recentemente tentado; aguardando para evitar 403.")
-                        time.sleep(8)
-                        continue
-                    last_login_attempt_ts = now
-
-                    page = ensure_authenticated(page)
-                    
+                # Apos o clique, verificar se houve redirecionamento para login
+                if "authx.globoid.globo.com" in page.url or "goidc.globo.com" in page.url:
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Redirecionamento para login detectado apos clique. Efetuando login...")
+                    page = clean_cache_and_login(page)
+                    if page is None or page.is_closed():
+                        raise RuntimeError("Falha no login: pagina fechada/invalidada durante clean_cache_and_login.")
                     try:
-                        # Aguarda sair do domínio de auth antes de forçar voltar ao site
-                        for _ in range(12):
-                            href_now = (page.url or "").lower()
-                            if "authx.globoid.globo.com" not in href_now and "goidc.globo.com" not in href_now:
-                                break
-                            time.sleep(0.5)
-                        # Só força retorno se não estiver mais no domínio de auth
-                        href_now = (page.url or "").lower()
-                        if "authx.globoid.globo.com" not in href_now and "goidc.globo.com" not in href_now:
-                            page = safe_goto(page, SITE_URL)
+                        page = safe_goto(page, SITE_URL)
                     except Exception as e:
                         print(f"[{datetime.now().strftime('%H:%M:%S')}] Erro ao retornar ao site após login: {e}")
+                    # Pula para a proxima iteracao do loop para reavaliar a pagina
                     continue
-
                 # screenshot_path = ARTIFACTS_DIR / "01_card_selecionado.png"
                 # page.screenshot(path=str(screenshot_path), full_page=True)
                 # print(f"Screenshot salvo: {screenshot_path}")

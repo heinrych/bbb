@@ -400,6 +400,7 @@ def handle_captcha_and_refresh(page, playwright=None):
                         continue
             return False
         
+        captcha_wait_extended = False
         for i in range(VOTAR_NOVAMENTE_RETRY):
 
             if time.time() > overall_deadline:
@@ -461,6 +462,17 @@ def handle_captcha_and_refresh(page, playwright=None):
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Janela do desafio do hCaptcha detectada. Voltando ao fluxo inicial...")
                     raise RestartInitialFlow("hCaptcha challenge visível durante espera curta")
                 time.sleep(0.5)
+
+            # Se após 6s ainda não houver confirmação, aguarda 3 minutos antes de continuar
+            if not captcha_wait_extended:
+                try:
+                    quick_confirm = page.locator("text=Seu voto").count() > 0
+                except Exception:
+                    quick_confirm = False
+                if not quick_confirm and not detect_votar_novamente_button():
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] hCaptcha demorando mais de 6s; aguardando 3 minutos antes de continuar...")
+                    time.sleep(180)
+                    captcha_wait_extended = True
 
             try:
                 # verifica botão votar novamente (pode aparecer junto/antes da confirmação)
@@ -552,6 +564,7 @@ def perform_login(page, max_attempts=3, clear_cache=True):
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Falha ao limpar cache antes do perform_login: {e}")
 
+    max_attempts = 1
     for attempt in range(max_attempts):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Iniciando tentativa {attempt} de login")
         login_stage = "inicio"
@@ -1083,9 +1096,7 @@ def perform_login_legacy(page, max_attempts=2, clear_cache=True):
                 page = goto_login_from_site(page)
                 href = (page.url or "").lower()
                 if "authx.globoid.globo.com" not in href and "goidc.globo.com" not in href:
-                    page = safe_goto(page, LOGIN_URL)
-                    if "not-found" in (page.url or "").lower():
-                        page = safe_goto(page, SITE_URL)
+                    raise RuntimeError("Login legado: fluxo direto desabilitado (USE_DIRECT_LOGIN_URL=0).")
 
             # Email opcional.
             try:
