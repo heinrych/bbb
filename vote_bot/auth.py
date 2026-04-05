@@ -419,11 +419,17 @@ def handle_captcha_and_refresh(page, playwright=None):
                     captcha_clicked = True
 
                     # Se isso abrir a janela de desafio, não tentamos resolver: reinicia o fluxo.
+                    start_time = time.time()
                     deadline = time.time() + 4.0
                     while time.time() < deadline:
                         if is_hcaptcha_challenge_visible(page):
                             print(f"[{datetime.now().strftime('%H:%M:%S')}] Desafio do hCaptcha abriu. Voltando ao fluxo inicial...")
                             raise RestartInitialFlow("hCaptcha challenge abriu após click")
+                        elapsed = time.time() - start_time
+                        if elapsed > 15:
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] Resolução do captcha demorando mais de 15s; aguardando 2 minutos...")
+                            time.sleep(120)
+                            break
                         time.sleep(0.25)
                     break
             except RestartInitialFlow:
